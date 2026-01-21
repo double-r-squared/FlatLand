@@ -1,0 +1,21 @@
+START:greeting
+
+NODE:greeting
+TEXT:Halt! What brings you to the castle gates?
+NEXT:response_1
+
+NODE:response_1
+TEXT:Just passing through? Very well, but keep your wits about you. Strange things have been happening lately.
+NEXT:ask_more
+NEXT:goodbye
+
+NODE:ask_more
+TEXT:The townspeople have been reporting odd sounds from the forest at night. Some say it's monsters, others claim it's just the wind. I don't know what to believe anymore.
+NEXT:end
+
+NODE:goodbye
+TEXT:Safe travels, stranger.
+NEXT:end
+
+NODE:end
+TEXT:...

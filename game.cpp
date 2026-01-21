@@ -37,6 +37,7 @@ private:
     // NPC interaction state
     bool inConversation;
     bool eKeyWasPressed;
+    NPC* currentTalkingNPC;  // Track which NPC we're talking to
     
     // View components
     std::unique_ptr<DialogueBox> dialogueBox;
@@ -47,7 +48,7 @@ private:
 public:
     Game() : window(nullptr), renderer(nullptr), running(true), 
              playerPos(5, 2.5), viewAngle(0), lastMouseX(SCREEN_WIDTH/2),
-             inConversation(false), eKeyWasPressed(false) {
+             inConversation(false), eKeyWasPressed(false), currentTalkingNPC(nullptr) {
         
         if (SDL_Init(SDL_INIT_VIDEO) < 0) {
             std::cerr << "SDL init failed: " << SDL_GetError() << std::endl;
@@ -61,7 +62,7 @@ public:
         SCREEN_WIDTH = dm.w;
         SCREEN_HEIGHT = dm.h;
         
-        window = SDL_CreateWindow("Side View Game", 
+        window = SDL_CreateWindow("FlatLand", 
                                   SDL_WINDOWPOS_CENTERED, 
                                   SDL_WINDOWPOS_CENTERED,
                                   SCREEN_WIDTH, SCREEN_HEIGHT, 
@@ -170,25 +171,73 @@ public:
         map.name = "Town";
         
         // Try to load from file first
-        std::ifstream testFile("map/castle.map");
+        std::ifstream testFile("map/caarlHouse.map");
+        // After loading the map, update the dialogue file paths:
         if (testFile.good()) {
             testFile.close();
-            map = Map::load("map/castle.map");
-            std::cout << "Loaded map from castle.map" << std::endl;
-        } else {
-            // If file doesn't exist, create default map
-            std::cout << "castle.map not found, creating default map" << std::endl;
-            map.addShape(std::make_shared<Rectangle>(Vec2(0, 0), 10, 5));
-            map.addShape(std::make_shared<Rectangle>(Vec2(15, 0), 8, 6));
-            map.addShape(std::make_shared<Triangle>(Vec2(25, 0), Vec2(30, 0), Vec2(27.5, 5)));
-            map.addShape(std::make_shared<Circle>(Vec2(35, 3), 3));
-            map.addShape(std::make_shared<Rectangle>(Vec2(40, 0), 5, 8));
+            map = Map::load("map/caarlHouse.map");
+            std::cout << "Loaded map from caarlHouse.map" << std::endl;
             
-            auto npcShape = std::make_shared<Circle>(Vec2(20, 3), 1.5);
-            map.addNPC(NPC(npcShape, Vec2(2, 0)));
+            std::cout << "\n=== DIALOGUE LOADING DEBUG ===" << std::endl;
+            for (auto& npc : map.npcs) {
+                std::cout << "\nNPC: " << npc.name << " (ID: " << npc.id << ")" << std::endl;
+                std::cout << "Original dialogue file path: " << npc.dialogueFile << std::endl;
+                
+                // Fix common path issues
+                std::string originalPath = npc.dialogueFile;
+                
+                // Try multiple possible paths
+                std::vector<std::string> possiblePaths;
+                
+                // 1. Try the path as-is
+                possiblePaths.push_back(npc.dialogueFile);
+                
+                // 2. Try removing ".." prefix if present
+                if (npc.dialogueFile.find("../") == 0) {
+                    possiblePaths.push_back(npc.dialogueFile.substr(3)); // Remove "../"
+                    possiblePaths.push_back("dialogues/" + npc.dialogueFile.substr(3));
+                }
+                
+                // 3. Try standard dialogues folder
+                possiblePaths.push_back("dialogues/" + npc.id + ".dialogue");
+                possiblePaths.push_back("dialogues/" + npc.name + ".dialogue");
+                possiblePaths.push_back("dialogues/" + npc.id + ".txt");
+                
+                // 4. Try with .dialogue extension if missing
+                if (npc.dialogueFile.find(".dialogue") == std::string::npos) {
+                    possiblePaths.push_back(npc.dialogueFile + ".dialogue");
+                }
+                
+                bool dialogueLoaded = false;
+                for (const auto& path : possiblePaths) {
+                    std::ifstream test(path);
+                    if (test.good()) {
+                        std::cout << "  Found dialogue at: " << path << std::endl;
+                        npc.dialogueFile = path;
+                        npc.loadDialogue(path);
+                        
+                        if (npc.hasDialogue()) {
+                            std::cout << "  SUCCESS: Loaded " << npc.dialogueNodes.size() << " dialogue nodes" << std::endl;
+                            dialogueLoaded = true;
+                            break;
+                        } else {
+                            std::cout << "  WARNING: File exists but no dialogue nodes parsed" << std::endl;
+                        }
+                    }
+                }
+                
+                if (!dialogueLoaded && !originalPath.empty()) {
+                    std::cout << "  ERROR: Could not find or load dialogue file" << std::endl;
+                    std::cout << "  Tried paths:" << std::endl;
+                    for (const auto& path : possiblePaths) {
+                        std::cout << "    - " << path << std::endl;
+                    }
+                }
+            }
+            std::cout << "=== END DEBUG ===\n" << std::endl;
         }
         
-        textContent = "Welcome! Use WASD to move, mouse to look around.";
+        textContent = "Welcome! Use WASD to move, mouse to look around. Look at NPCs and press E to talk.";
         dialogueBox->setContent(textContent);
         
         SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -221,25 +270,76 @@ public:
     }
     
     void update(float dt) {
+        const NPC* targetNPCConst = worldView->getNPCInCrosshair(map, playerPos, viewAngle, 3.0f);
+
         // Check for NPC in crosshair
-        const NPC* targetNPC = worldView->getNPCInCrosshair(map, playerPos, viewAngle, 3.0f);
+        NPC* targetNPC = nullptr;
+        if (targetNPCConst) {
+            // Find the corresponding NPC in our map (non-const version)
+            for (auto& npc : map.npcs) {
+                if (&npc == targetNPCConst) {
+                    targetNPC = &npc;
+                    break;
+                }
+            }
+        }
         
         // Handle E key for interaction
         bool eKeyPressed = keyState[SDL_SCANCODE_E];
         
-        // @todo
-        // MARK: CONVERSATION TREE
+        // CONVERSATION TREE IMPLEMENTATION
         if (eKeyPressed && !eKeyWasPressed) {
             // E key was just pressed
             if (inConversation) {
-                // Exit conversation
-                inConversation = false;
-                dialogueBox->setPrompt("", false);
+                // We're already in conversation - advance dialogue
+                if (currentTalkingNPC && currentTalkingNPC->hasDialogue()) {
+                    currentTalkingNPC->advanceDialogue();
+                    
+                    // Check if we're back at start (conversation ended)
+                    if (currentTalkingNPC->currentNodeId == currentTalkingNPC->startNodeId) {
+                        // Only end conversation if we've completed at least one full cycle
+                        if (currentTalkingNPC->conversationCount > 0) {
+                            // End conversation
+                            inConversation = false;
+                            currentTalkingNPC = nullptr;
+                            dialogueBox->setPrompt("", false);
+                            textContent = "You finished talking with the NPC.";
+                        } else {
+                            // Still in first conversation, update text
+                            dialogueBox->setContent(currentTalkingNPC->getCurrentDialogueText());
+                        }
+                    } else {
+                        // Still in conversation, update text
+                        dialogueBox->setContent(currentTalkingNPC->getCurrentDialogueText());
+                        dialogueBox->setPrompt("E - Continue", true);
+                    }
+                } else {
+                    // No valid dialogue, end conversation
+                    inConversation = false;
+                    currentTalkingNPC = nullptr;
+                    dialogueBox->setPrompt("", false);
+                }
             } else if (targetNPC) {
-                // Enter conversation
+                // Start conversation with NPC
                 inConversation = true;
-                dialogueBox->setContent("Hello World");
-                dialogueBox->setPrompt("", false);
+                currentTalkingNPC = targetNPC;
+                
+                // Load NPC's dialogue if not already loaded
+                if (!targetNPC->dialogueFile.empty() && !targetNPC->hasDialogue()) {
+                    targetNPC->loadDialogue(targetNPC->dialogueFile);
+                }
+                
+                // Reset to start of dialogue (or start if new conversation)
+                targetNPC->resetDialogue();
+                
+                // Set initial dialogue text
+                if (targetNPC->hasDialogue()) {
+                    dialogueBox->setContent(targetNPC->getCurrentDialogueText());
+                } else {
+                    dialogueBox->setContent("Hello, I'm " + targetNPC->name + ".");
+                }
+                
+                dialogueBox->setPrompt("E - Continue", true);
             }
         }
         
@@ -308,7 +408,8 @@ public:
             
             // Update text based on position or NPC targeting
             if (targetNPC) {
-                textContent = "Exploring... Position: (" + 
+                textContent = targetNPC->name + 
+                             " - Position: (" + 
                              std::to_string((int)playerPos.x) + ", " + 
                              std::to_string((int)playerPos.y) + ")";
                 dialogueBox->setPrompt("E - Talk", true);
@@ -319,7 +420,10 @@ public:
                 dialogueBox->setPrompt("", false);
             }
             
-            dialogueBox->setContent(textContent);
+            // Only update dialogue box content if we're not in conversation
+            if (!inConversation) {
+                dialogueBox->setContent(textContent);
+            }
         }
     }
     
