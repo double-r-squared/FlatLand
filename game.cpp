@@ -12,6 +12,7 @@
 #include "views/dialogue-box/dialogue-box.hh"
 #include "views/mini-map/mini-map.hh"
 #include "views/world-view/world-view.hh"
+#include "views/player-view/player-view.hh"
 
 int SCREEN_WIDTH = 1920;
 int SCREEN_HEIGHT = 1080;
@@ -41,6 +42,7 @@ private:
     std::unique_ptr<DialogueBox> dialogueBox;
     std::unique_ptr<MiniMap> miniMap;
     std::unique_ptr<WorldView> worldView;
+    std::unique_ptr<PlayerStatsView> playerStatsView;
     
 public:
     Game() : window(nullptr), renderer(nullptr), running(true), 
@@ -120,6 +122,46 @@ public:
             std::cerr << "Warning: Could not load any font, text will appear in console only" << std::endl;
             std::cerr << "Try placing a .ttf font file in your project directory" << std::endl;
         }
+        
+        // Position player stats view beneath dialogue box - span to bottom of screen
+        int statsViewY = dialogueBoxY + dialogueBoxHeight + 20;  // 20px spacing
+        int statsViewHeight = SCREEN_HEIGHT - statsViewY - 50;  // Span to bottom with margin
+        
+        playerStatsView = std::make_unique<PlayerStatsView>(
+            50,  // x position with left margin
+            statsViewY,
+            SCREEN_WIDTH - 100,  // width with margins
+            statsViewHeight
+        );
+        
+        // Try to load player avatar
+        std::vector<std::string> avatarPaths = {
+            "assets/player/normal",
+            "assets/player/Normal"
+        };
+        
+        bool avatarLoaded = false;
+        for (const auto& avatarPath : avatarPaths) {
+            if (playerStatsView->loadAvatar(renderer, avatarPath)) {
+                avatarLoaded = true;
+                break;
+            }
+        }
+        
+        if (!avatarLoaded) {
+            std::cerr << "Warning: Could not load player avatar" << std::endl;
+        }
+        
+        // Load font for player name
+        for (const auto& fontPath : fontPaths) {
+            if (playerStatsView->loadFont(fontPath, 24)) {
+                std::cout << "Successfully loaded font for player view: " << fontPath << std::endl;
+                break;
+            }
+        }
+        
+        // Set player name
+        playerStatsView->setPlayerName("Square");
         
         miniMap = std::make_unique<MiniMap>(MINIMAP_SIZE, SCREEN_WIDTH);
         worldView = std::make_unique<WorldView>(SCREEN_WIDTH, SCREEN_HEIGHT, TEXT_AREA_HEIGHT);
@@ -294,6 +336,9 @@ public:
         
         // Draw dialogue box
         dialogueBox->render(renderer);
+        
+        // Draw player stats view
+        playerStatsView->render(renderer);
         
         // Draw prompt text below crosshair if needed
         int viewHeight = 60;

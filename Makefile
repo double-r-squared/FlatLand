@@ -1,8 +1,8 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2
+CXXFLAGS = -std=c++17 -Wall -Wextra -O3
 INCLUDES = -I/opt/homebrew/include
-LDFLAGS = -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf
+LDFLAGS = -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -lSDL2_image
 
 # Directories
 MAP_DIR = map
@@ -12,6 +12,7 @@ VIEWS_DIR = views
 DIALOGUE_DIR = $(VIEWS_DIR)/dialogue-box
 MINIMAP_DIR = $(VIEWS_DIR)/mini-map
 WORLDVIEW_DIR = $(VIEWS_DIR)/world-view
+PLAYERVIEW_DIR = $(VIEWS_DIR)/player-view
 
 # Output
 TARGET = game
@@ -26,7 +27,8 @@ SOURCES = game.cpp \
           $(SHAPES_DIR)/Circle.cpp \
           $(DIALOGUE_DIR)/dialogue-box.cpp \
           $(MINIMAP_DIR)/mini-map.cpp \
-          $(WORLDVIEW_DIR)/world-view.cpp
+          $(WORLDVIEW_DIR)/world-view.cpp \
+          $(PLAYERVIEW_DIR)/player-view.cpp
 
 # Map builder sources
 BUILDER_SOURCES = map-builder.cpp \
@@ -78,10 +80,10 @@ debug: rebuild
 # Install dependencies (macOS Homebrew / Linux)
 install-deps:
 	@echo "For macOS (Homebrew):"
-	@echo "  brew install sdl2 sdl2_ttf"
+	@echo "  brew install sdl2 sdl2_ttf sdl2_image"
 	@echo ""
 	@echo "For Ubuntu/Debian:"
-	@echo "  sudo apt-get install libsdl2-dev libsdl2-ttf-dev"
+	@echo "  sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev"
 	@echo ""
 	@echo "Note: Update INCLUDES and LDFLAGS if SDL2 is in a different location"
 
