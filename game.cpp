@@ -3,6 +3,8 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <sys/stat.h>  // Add this for mkdir
+#include <cstdlib>     // Add this for system()
 #include "Vec2.hh"
 #include "map/map.hh"
 #include "npc/npc.hh"
@@ -31,7 +33,7 @@ private:
     std::string textContent;
     
     const Uint8* keyState;
-    int mouseX, mouseY;
+    int mouseX;  // Removed mouseY since not used
     int lastMouseX;
     
     // NPC interaction state
@@ -136,15 +138,14 @@ public:
         );
         
         // Try to load player avatar
-        std::vector<std::string> avatarPaths = {
-            "assets/player/normal",
-            "assets/player/Normal"
-        };
+        std::vector<std::string> avatarPaths = { "assets/player"};
         
         bool avatarLoaded = false;
         for (const auto& avatarPath : avatarPaths) {
+            std::cout << "DEBUG: Trying to load player avatar from: " << avatarPath << std::endl;
             if (playerStatsView->loadAvatar(renderer, avatarPath)) {
                 avatarLoaded = true;
+                std::cout << "DEBUG: Successfully loaded player avatar" << std::endl;
                 break;
             }
         }
@@ -172,16 +173,34 @@ public:
         
         // Try to load from file first
         std::ifstream testFile("map/caarlHouse.map");
+        
         // After loading the map, update the dialogue file paths:
         if (testFile.good()) {
             testFile.close();
             map = Map::load("map/caarlHouse.map");
             std::cout << "Loaded map from caarlHouse.map" << std::endl;
             
+            // FIX: Check and fix NPC avatar paths if they're empty
+            std::cout << "\n=== CHECKING NPC AVATAR PATHS ===" << std::endl;
+            for (auto& npc : map.npcs) {
+                std::cout << "NPC: " << npc.name << " (ID: " << npc.id << ")" << std::endl;
+                std::cout << "Original avatar path: '" << npc.avatarPath << "'" << std::endl;
+                
+                // If avatar path is empty, set it to the default NPC directory
+                if (npc.avatarPath.empty()) {
+                    npc.avatarPath = "assets/npc";
+                    std::cout << "  -> Fixed: Set avatar path to: " << npc.avatarPath << std::endl;
+                }
+                
+                // Note: Removed directory checking code that was causing compile errors
+                // The actual directory check happens in PlayerStatsView::loadNPCPortrait
+            }
+            std::cout << "=== END AVATAR CHECK ===\n" << std::endl;
+            
             std::cout << "\n=== DIALOGUE LOADING DEBUG ===" << std::endl;
             for (auto& npc : map.npcs) {
                 std::cout << "\nNPC: " << npc.name << " (ID: " << npc.id << ")" << std::endl;
-                std::cout << "Original dialogue file path: " << npc.dialogueFile << std::endl;
+                std::cout << "Avatar path: " << npc.avatarPath << std::endl;
                 
                 // Fix common path issues
                 std::string originalPath = npc.dialogueFile;
@@ -304,6 +323,9 @@ public:
                             currentTalkingNPC = nullptr;
                             dialogueBox->setPrompt("", false);
                             textContent = "You finished talking with the NPC.";
+                            
+                            // Hide NPC portrait
+                            playerStatsView->hideNPC();
                         } else {
                             // Still in first conversation, update text
                             dialogueBox->setContent(currentTalkingNPC->getCurrentDialogueText());
@@ -318,11 +340,36 @@ public:
                     inConversation = false;
                     currentTalkingNPC = nullptr;
                     dialogueBox->setPrompt("", false);
+                    
+                    // Hide NPC portrait
+                    playerStatsView->hideNPC();
                 }
             } else if (targetNPC) {
+                // DEBUG: Print NPC info before loading
+                std::cout << "\n=== STARTING CONVERSATION WITH NPC ===" << std::endl;
+                std::cout << "NPC Name: " << targetNPC->name << std::endl;
+                std::cout << "NPC Avatar Path: '" << targetNPC->avatarPath << "'" << std::endl;
+                
                 // Start conversation with NPC
                 inConversation = true;
                 currentTalkingNPC = targetNPC;
+                
+                // Load and show NPC portrait
+                if (!targetNPC->avatarPath.empty()) {
+                    std::cout << "DEBUG: Calling loadNPCPortrait with path: " << targetNPC->avatarPath << std::endl;
+                    bool success = playerStatsView->loadNPCPortrait(renderer, targetNPC->avatarPath);
+                    std::cout << "DEBUG: loadNPCPortrait returned: " << (success ? "SUCCESS" : "FAILED") << std::endl;
+                } else {
+                    std::cout << "DEBUG: NPC avatarPath is EMPTY!" << std::endl;
+                    // Try to load from default location
+                    bool success = playerStatsView->loadNPCPortrait(renderer, "assets/npc");
+                    std::cout << "DEBUG: Tried loading from default location: " 
+                              << (success ? "SUCCESS" : "FAILED") << std::endl;
+                }
+                
+                std::cout << "DEBUG: Calling showNPC with name: " << targetNPC->name << std::endl;
+                playerStatsView->showNPC(targetNPC->name);
+                std::cout << "=== CONVERSATION STARTED ===\n" << std::endl;
                 
                 // Load NPC's dialogue if not already loaded
                 if (!targetNPC->dialogueFile.empty() && !targetNPC->hasDialogue()) {
@@ -353,8 +400,8 @@ public:
             Vec2 forward(std::cos(viewAngle), std::sin(viewAngle));
             Vec2 right(-std::sin(viewAngle), std::cos(viewAngle));
             
-            // Store old position for collision detection
-            Vec2 oldPos = playerPos;
+            // Store old position for collision detection (unused but kept for reference)
+            // Vec2 oldPos = playerPos;  // Commented out since not used
             Vec2 newPos = playerPos;
             
             // WASD movement relative to view direction
@@ -473,6 +520,9 @@ public:
 };
 
 int main(int argc, char* argv[]) {
+    (void)argc;  // Mark unused parameters
+    (void)argv;
+    
     Game game;
     game.run();
     return 0;

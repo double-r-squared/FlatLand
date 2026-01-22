@@ -128,6 +128,7 @@ public:
         std::cout << "Current ID: " << npc.id << std::endl;
         std::cout << "Current Name: " << npc.name << std::endl;
         std::cout << "Current Dialogue File: " << npc.dialogueFile << std::endl;
+        std::cout << "Current Avatar Path: " << npc.avatarPath << std::endl;
         
         std::cout << "\nEnter new ID (or press Enter to keep current): ";
         std::string newId;
@@ -150,10 +151,18 @@ public:
             npc.dialogueFile = newDialogue;
         }
         
+        std::cout << "Enter avatar folder path (or press Enter to keep current): ";
+        std::string newAvatar;
+        std::getline(std::cin, newAvatar);
+        if (!newAvatar.empty()) {
+            npc.avatarPath = newAvatar;
+        }
+        
         std::cout << "\nNPC updated!" << std::endl;
         std::cout << "  ID: " << npc.id << std::endl;
         std::cout << "  Name: " << npc.name << std::endl;
         std::cout << "  Dialogue: " << npc.dialogueFile << std::endl;
+        std::cout << "  Avatar: " << npc.avatarPath << std::endl;
     }
     
     void selectNPCAtPosition(Vec2 worldPos) {
@@ -294,8 +303,12 @@ public:
                                 std::string dialoguePath;
                                 std::getline(std::cin, dialoguePath);
                                 
+                                std::cout << "Enter avatar folder path (optional, e.g., assets/npcs/guard): ";
+                                std::string avatarPath;
+                                std::getline(std::cin, avatarPath);
+                                
                                 // Default velocity: moving right
-                                NPC newNPC(circle, Vec2(2, 0), npcId, npcName);
+                                NPC newNPC(circle, Vec2(2, 0), npcId, npcName, avatarPath);
                                 if (!dialoguePath.empty()) {
                                     newNPC.dialogueFile = dialoguePath;
                                 }
@@ -352,7 +365,8 @@ public:
                      << circ->position.x << "," << circ->position.y << ","
                      << circ->radius << "," 
                      << npc.velocity.x << "," << npc.velocity.y << ","
-                     << npc.id << "," << npc.name << "," << npc.dialogueFile << "\n";
+                     << npc.id << "," << npc.name << "," 
+                     << npc.dialogueFile << "," << npc.avatarPath << "\n";
             }
         }
         
@@ -407,18 +421,25 @@ public:
                 shapes.push_back(std::make_shared<Circle>(Vec2(x, y), r));
             } else if (type == "NPC_CIRC") {
                 float x, y, r, vx, vy;
-                std::string npcId, npcName, dialoguePath;
-                char comma;
+                std::string npcId, npcName, dialoguePath, avatarPath;
                 
+                // Parse the numbers
+                char comma;
                 iss >> x >> comma >> y >> comma >> r >> comma >> vx >> comma >> vy >> comma;
+                
+                // Parse the strings
                 std::getline(iss, npcId, ',');
                 std::getline(iss, npcName, ',');
-                std::getline(iss, dialoguePath);
+                std::getline(iss, dialoguePath, ',');
+                std::getline(iss, avatarPath);  // Get the rest
                 
                 auto shape = std::make_shared<Circle>(Vec2(x, y), r);
-                NPC npc(shape, Vec2(vx, vy), npcId, npcName);
-                npc.dialogueFile = dialoguePath;
-                npcs.push_back(npc);
+                
+                // Create NPC with all parameters
+                NPC newNPC(shape, Vec2(vx, vy), npcId, npcName, avatarPath);
+                newNPC.dialogueFile = dialoguePath;  // Set dialogue file separately
+                
+                map.addNPC(newNPC);
             }
         }
         

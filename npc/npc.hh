@@ -24,6 +24,7 @@ public:
     std::string id;              // Unique identifier (e.g., "guard_001")
     std::string name;            // Display name (e.g., "Town Guard")
     std::string dialogueFile;    // Path to dialogue JSON (e.g., "dialogues/guard.json")
+    std::string avatarPath;      // Path to avatar image folder (e.g., "assets/npcs/guard")
     
     // Dialogue state
     std::string currentNodeId;   // Which dialogue node we're currently at
@@ -34,7 +35,7 @@ public:
     std::string startNodeId;     // Where conversations begin
     
     NPC(std::shared_ptr<Shape> s, Vec2 vel = Vec2(), 
-        std::string npcId = "", std::string npcName = "");
+        std::string npcId = "", std::string npcName = "", std::string avatar = "");
     
     void update(float dt);
     

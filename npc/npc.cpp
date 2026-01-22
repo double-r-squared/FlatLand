@@ -3,13 +3,14 @@
 #include <iostream>
 #include <sstream>
 
-NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcName) 
-    : shape(s), velocity(vel), id(npcId), name(npcName), 
+NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcName, std::string avatar) 
+    : shape(s), velocity(vel), id(npcId), name(npcName), avatarPath(avatar),
       currentNodeId(""), conversationCount(0), startNodeId("start") {
     
     // If no ID provided, generate a default one
     std::cout << "WARNING: NO ID PROVIDED";
     if (id.empty()) {
+        std::cout << "WARNING: NO ID PROVIDED" << std::endl;
         static int npcCounter = 0;
         id = "npc_" + std::to_string(npcCounter++);
     }
@@ -23,6 +24,7 @@ NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcN
 void NPC::update(float dt) {
     shape->position = shape->position + velocity * dt;
 }
+
 void NPC::loadDialogue(const std::string& filepath) {
     dialogueFile = filepath;
     dialogueNodes.clear();
