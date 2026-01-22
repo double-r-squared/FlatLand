@@ -5,10 +5,9 @@
 
 NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcName, std::string avatar) 
     : shape(s), velocity(vel), id(npcId), name(npcName), avatarPath(avatar),
-      currentNodeId(""), conversationCount(0), startNodeId("start") {
+      conversationState(IDLE), currentNodeId(""), conversationCount(0), startNodeId("start") {
     
     // If no ID provided, generate a default one
-    std::cout << "WARNING: NO ID PROVIDED";
     if (id.empty()) {
         std::cout << "WARNING: NO ID PROVIDED" << std::endl;
         static int npcCounter = 0;
@@ -23,6 +22,102 @@ NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcN
 
 void NPC::update(float dt) {
     shape->position = shape->position + velocity * dt;
+}
+
+// ============================================================================
+// HIGH-LEVEL CONVERSATION INTERFACE
+// ============================================================================
+
+bool NPC::canTalk() const {
+    return conversationState == IDLE;
+}
+
+void NPC::startConversation() {
+    ensureDialogueLoaded();
+    conversationState = ACTIVE;
+    resetDialogue();
+    
+    std::cout << "Started conversation with " << name << std::endl;
+}
+
+bool NPC::advanceConversation() {
+    if (conversationState != ACTIVE) {
+        return false;
+    }
+    
+    if (currentNodeId.empty() || dialogueNodes.find(currentNodeId) == dialogueNodes.end()) {
+        conversationState = ENDING;
+        return false;
+    }
+    
+    const auto& node = dialogueNodes.at(currentNodeId);
+    
+    // Move to next node if available
+    if (!node.nextNodeIds.empty()) {
+        currentNodeId = node.nextNodeIds[0];  // Take first option for now
+    } else {
+        // End of dialogue tree, loop back to start
+        conversationCount++;
+        currentNodeId = startNodeId;
+        
+        // Check if we should end conversation (completed at least one cycle)
+        if (isAtConversationEnd()) {
+            conversationState = ENDING;
+            return false;
+        }
+    }
+    
+    return true;  // Conversation continues
+}
+
+void NPC::endConversation() {
+    conversationState = IDLE;
+    resetDialogue();
+    std::cout << "Ended conversation with " << name << std::endl;
+}
+
+// ============================================================================
+// UI HELPERS
+// ============================================================================
+
+std::string NPC::getCurrentText() const {
+    if (currentNodeId.empty() || dialogueNodes.find(currentNodeId) == dialogueNodes.end()) {
+        if (hasDialogue()) {
+            return "...";  // Dialogue exists but not loaded properly
+        } else {
+            return "Hello, I'm " + name + ".";  // Default greeting
+        }
+    }
+    
+    return dialogueNodes.at(currentNodeId).text;
+}
+
+std::string NPC::getPrompt() const {
+    if (conversationState == IDLE) {
+        return "E - Talk";
+    } else if (conversationState == ACTIVE) {
+        return "E - Continue";
+    }
+    return "";
+}
+
+bool NPC::isInConversation() const {
+    return conversationState == ACTIVE;
+}
+
+// ============================================================================
+// DIALOGUE LOADING AND MANAGEMENT
+// ============================================================================
+
+void NPC::ensureDialogueLoaded() {
+    // Only load if we have a dialogue file specified and haven't loaded yet
+    if (!dialogueFile.empty() && dialogueNodes.empty()) {
+        loadDialogue(dialogueFile);
+    }
+}
+
+bool NPC::hasDialogue() const {
+    return !dialogueNodes.empty();
 }
 
 void NPC::loadDialogue(const std::string& filepath) {
@@ -92,9 +187,6 @@ void NPC::loadDialogue(const std::string& filepath) {
                         currentNode.nextNodeIds.push_back(nextNode);
                     }
                 }
-                
-                // Also handle case where NEXT is on its own line without values
-                // (next values will come on subsequent lines)
             } else if (key == "OPTION") {
                 // For future: handle multiple choice options
                 // For now, just add to nextNodeIds
@@ -109,7 +201,6 @@ void NPC::loadDialogue(const std::string& filepath) {
         } else {
             // Line without colon - check if it's a continuation of NEXT values
             if (!line.empty() && inNode && !currentNode.nextNodeIds.empty()) {
-                // This might be additional NEXT values on new lines
                 std::istringstream iss(line);
                 std::string nextNode;
                 while (iss >> nextNode) {
@@ -150,35 +241,12 @@ void NPC::loadDialogue(const std::string& filepath) {
     }
 }
 
-std::string NPC::getCurrentDialogueText() const {
-    if (currentNodeId.empty() || dialogueNodes.find(currentNodeId) == dialogueNodes.end()) {
-        return "...";  // Default if no dialogue
-    }
-    
-    return dialogueNodes.at(currentNodeId).text;
-}
-
-void NPC::advanceDialogue() {
-    if (currentNodeId.empty() || dialogueNodes.find(currentNodeId) == dialogueNodes.end()) {
-        return;
-    }
-    
-    const auto& node = dialogueNodes.at(currentNodeId);
-    
-    // Move to next node if available
-    if (!node.nextNodeIds.empty()) {
-        currentNodeId = node.nextNodeIds[0];  // Just take first option for now
-    } else {
-        // End of dialogue, loop back to start
-        conversationCount++;
-        currentNodeId = startNodeId;
-    }
-}
-
 void NPC::resetDialogue() {
     currentNodeId = startNodeId;
 }
 
-bool NPC::hasDialogue() const {
-    return !dialogueNodes.empty();
+bool NPC::isAtConversationEnd() const {
+    // We're at the end if we've completed at least one full cycle
+    // and we're back at the start node
+    return (conversationCount > 0 && currentNodeId == startNodeId);
 }

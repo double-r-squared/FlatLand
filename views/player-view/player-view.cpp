@@ -3,11 +3,13 @@
 #include <dirent.h>
 #include <algorithm>
 #include <vector>
+#include <sstream>
 
 PlayerStatsView::PlayerStatsView(int x, int y, int width, int height)
     : x(x), y(y), width(width), height(height),
-      playerAvatar(nullptr), npcPortrait(nullptr), font(nullptr),
-      textColor({255, 255, 255, 255}), showingNPC(false) {
+      playerAvatar(nullptr), npcPortrait(nullptr), 
+      showingNPC(false), font(nullptr), dialogueFont(nullptr),
+      textColor({255, 255, 255, 255}), dialogueColor({220, 220, 220, 255}) {
     
     // Initialize SDL_ttf if not already initialized
     if (!TTF_WasInit()) {
@@ -33,17 +35,29 @@ PlayerStatsView::~PlayerStatsView() {
     if (font) {
         TTF_CloseFont(font);
     }
+    if (dialogueFont) {
+        TTF_CloseFont(dialogueFont);
+    }
 }
 
 bool PlayerStatsView::loadFont(const std::string& fontPath, int fontSize) {
     if (font) {
         TTF_CloseFont(font);
     }
+    if (dialogueFont) {
+        TTF_CloseFont(dialogueFont);
+    }
     
     font = TTF_OpenFont(fontPath.c_str(), fontSize);
     if (!font) {
         std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
         return false;
+    }
+    
+    // Load smaller font for dialogue text
+    dialogueFont = TTF_OpenFont(fontPath.c_str(), fontSize);
+    if (!dialogueFont) {
+        std::cerr << "Failed to load dialogue font: " << TTF_GetError() << std::endl;
     }
     
     return true;
@@ -55,7 +69,6 @@ bool PlayerStatsView::loadAvatar(SDL_Renderer* renderer, const std::string& avat
         playerAvatar = nullptr;
     }
     
-    // Try to find a PNG file in the avatar directory
     DIR* dir = opendir(avatarPath.c_str());
     if (!dir) {
         std::cerr << "Could not open avatar directory: " << avatarPath << std::endl;
@@ -78,7 +91,6 @@ bool PlayerStatsView::loadAvatar(SDL_Renderer* renderer, const std::string& avat
         return false;
     }
     
-    // Load the first PNG found
     SDL_Surface* surface = IMG_Load(pngFiles[0].c_str());
     if (!surface) {
         std::cerr << "Failed to load avatar image: " << IMG_GetError() << std::endl;
@@ -103,12 +115,10 @@ bool PlayerStatsView::loadNPCPortrait(SDL_Renderer* renderer, const std::string&
         npcPortrait = nullptr;
     }
     
-    // If empty path, just return true (no portrait to load)
     if (npcAvatarPath.empty()) {
         return true;
     }
     
-    // Try to find a PNG file in the NPC avatar directory
     DIR* dir = opendir(npcAvatarPath.c_str());
     if (!dir) {
         std::cerr << "Could not open NPC avatar directory: " << npcAvatarPath << std::endl;
@@ -131,7 +141,6 @@ bool PlayerStatsView::loadNPCPortrait(SDL_Renderer* renderer, const std::string&
         return false;
     }
     
-    // Load the first PNG found
     SDL_Surface* surface = IMG_Load(pngFiles[0].c_str());
     if (!surface) {
         std::cerr << "Failed to load NPC portrait: " << IMG_GetError() << std::endl;
@@ -162,6 +171,45 @@ void PlayerStatsView::showNPC(const std::string& name) {
 void PlayerStatsView::hideNPC() {
     showingNPC = false;
     npcName = "";
+    npcDialogue = "";
+}
+
+void PlayerStatsView::setNPCDialogue(const std::string& dialogue) {
+    npcDialogue = dialogue;
+}
+
+std::vector<std::string> PlayerStatsView::wrapText(const std::string& text, int maxWidth, TTF_Font* fontToUse) {
+    std::vector<std::string> lines;
+    if (!fontToUse) return lines;
+    
+    std::istringstream stream(text);
+    std::string word;
+    std::string currentLine;
+    
+    while (stream >> word) {
+        std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
+        
+        int textWidth;
+        TTF_SizeText(fontToUse, testLine.c_str(), &textWidth, nullptr);
+        
+        if (textWidth > maxWidth) {
+            if (!currentLine.empty()) {
+                lines.push_back(currentLine);
+                currentLine = word;
+            } else {
+                lines.push_back(word);
+                currentLine = "";
+            }
+        } else {
+            currentLine = testLine;
+        }
+    }
+    
+    if (!currentLine.empty()) {
+        lines.push_back(currentLine);
+    }
+    
+    return lines;
 }
 
 void PlayerStatsView::render(SDL_Renderer* renderer) {
@@ -175,20 +223,19 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
     SDL_RenderDrawRect(renderer, &bgRect);
     
     int padding = 20;
-    int avatarSize = 128;  // Size for avatar squares
+    int nameHeight = 24;  // smaller reserve for names
+    int avatarSize = height - (2 * padding) - nameHeight;
     
     if (showingNPC && npcPortrait) {
-        // Split view: Player on left, NPC on right
-        int halfWidth = width / 2;
-        
-        // Draw divider line
-        SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-        SDL_RenderDrawLine(renderer, x + halfWidth, y, x + halfWidth, y + height);
+        // CONVERSATION MODE
+        int separatorX = width / 2;
+        int dialogueAreaWidth = (width / 2) - avatarSize - (3 * padding);
         
         // LEFT SIDE - Player
+        int playerAvatarX = x + padding;
         if (playerAvatar) {
             SDL_Rect playerAvatarRect = {
-                x + padding,
+                playerAvatarX,
                 y + padding,
                 avatarSize,
                 avatarSize
@@ -196,18 +243,19 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
             SDL_RenderCopy(renderer, playerAvatar, nullptr, &playerAvatarRect);
         }
         
-        // Player name
+        // Player Name - CENTERED UNDER avatar
         if (font && !playerName.empty()) {
+            int nameW, nameH;
+            TTF_SizeText(font, playerName.c_str(), &nameW, &nameH);
+            
+            int nameX = playerAvatarX + (avatarSize - nameW) / 2;
+            int nameY = y + padding + avatarSize + 5;
+            
             SDL_Surface* surface = TTF_RenderText_Blended(font, playerName.c_str(), textColor);
             if (surface) {
                 SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
                 if (texture) {
-                    SDL_Rect textRect = {
-                        x + padding,
-                        y + padding + avatarSize + 10,
-                        surface->w,
-                        surface->h
-                    };
+                    SDL_Rect textRect = {nameX, nameY, nameW, nameH};
                     SDL_RenderCopy(renderer, texture, nullptr, &textRect);
                     SDL_DestroyTexture(texture);
                 }
@@ -215,10 +263,15 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
             }
         }
         
+        // CENTER - Vertical Separator
+        SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+        SDL_RenderDrawLine(renderer, x + separatorX, y, x + separatorX, y + height);
+        
         // RIGHT SIDE - NPC
+        int npcAvatarX = x + width - padding - avatarSize;
         if (npcPortrait) {
             SDL_Rect npcAvatarRect = {
-                x + halfWidth + padding,
+                npcAvatarX,
                 y + padding,
                 avatarSize,
                 avatarSize
@@ -226,29 +279,65 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
             SDL_RenderCopy(renderer, npcPortrait, nullptr, &npcAvatarRect);
         }
         
-        // NPC name
+        // NPC Name - CENTERED UNDER avatar
         if (font && !npcName.empty()) {
+            int nameW, nameH;
+            TTF_SizeText(font, npcName.c_str(), &nameW, &nameH);
+            
+            int nameX = npcAvatarX + (avatarSize - nameW) / 2;
+            int nameY = y + padding + avatarSize + 5;
+            
             SDL_Surface* surface = TTF_RenderText_Blended(font, npcName.c_str(), textColor);
             if (surface) {
                 SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
                 if (texture) {
-                    SDL_Rect textRect = {
-                        x + halfWidth + padding,
-                        y + padding + avatarSize + 10,
-                        surface->w,
-                        surface->h
-                    };
+                    SDL_Rect textRect = {nameX, nameY, nameW, nameH};
                     SDL_RenderCopy(renderer, texture, nullptr, &textRect);
                     SDL_DestroyTexture(texture);
                 }
                 SDL_FreeSurface(surface);
             }
         }
+        
+        // NPC Dialogue Text - start higher to ensure visibility
+        int npcSectionX = x + separatorX + padding;
+        int npcDialogueStartY = y + padding + 10;  // ← start near top so it's visible
+        
+        if (dialogueFont && !npcDialogue.empty()) {
+            std::vector<std::string> lines = wrapText(npcDialogue, dialogueAreaWidth, dialogueFont);
+            int lineHeight = TTF_FontLineSkip(dialogueFont);
+            int currentY = npcDialogueStartY;
+            
+            for (const auto& line : lines) {
+                if (currentY + lineHeight > y + height - padding) {
+                    break;
+                }
+                
+                SDL_Surface* surface = TTF_RenderText_Blended(dialogueFont, line.c_str(), dialogueColor);
+                if (surface) {
+                    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+                    if (texture) {
+                        SDL_Rect textRect = {
+                            npcSectionX,
+                            currentY,
+                            surface->w,
+                            surface->h
+                        };
+                        SDL_RenderCopy(renderer, texture, nullptr, &textRect);
+                        SDL_DestroyTexture(texture);
+                    }
+                    SDL_FreeSurface(surface);
+                }
+                
+                currentY += lineHeight;
+            }
+        }
     } else {
-        // Normal view: Just player
+        // NORMAL MODE
+        int playerAvatarX = x + padding;
         if (playerAvatar) {
             SDL_Rect playerAvatarRect = {
-                x + padding,
+                playerAvatarX,
                 y + padding,
                 avatarSize,
                 avatarSize
@@ -256,18 +345,19 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
             SDL_RenderCopy(renderer, playerAvatar, nullptr, &playerAvatarRect);
         }
         
-        // Player name
+        // Player Name - CENTERED UNDER avatar
         if (font && !playerName.empty()) {
+            int nameW, nameH;
+            TTF_SizeText(font, playerName.c_str(), &nameW, &nameH);
+            
+            int nameX = playerAvatarX + (avatarSize - nameW) / 2;
+            int nameY = y + padding + avatarSize + 5;
+            
             SDL_Surface* surface = TTF_RenderText_Blended(font, playerName.c_str(), textColor);
             if (surface) {
                 SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
                 if (texture) {
-                    SDL_Rect textRect = {
-                        x + padding,
-                        y + padding + avatarSize + 10,
-                        surface->w,
-                        surface->h
-                    };
+                    SDL_Rect textRect = {nameX, nameY, nameW, nameH};
                     SDL_RenderCopy(renderer, texture, nullptr, &textRect);
                     SDL_DestroyTexture(texture);
                 }

@@ -1,21 +1,47 @@
 #include "world-view.hh"
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
-WorldView::WorldView(int screenWidth, int screenHeight, int textAreaHeight) 
-    : screenWidth(screenWidth), screenHeight(screenHeight), textAreaHeight(textAreaHeight) {}
+WorldView::WorldView(int w, int h)
+    : screenWidth(w), screenHeight(h), currentPrompt(""), showPrompt(false) {
+
+    // Load a font for the floating prompt — try the same paths as before
+    std::vector<std::string> fontPaths = {
+        "assets/fonts/Minecraft/Minecraft-Regular.otf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf"
+    };
+
+    for (const auto& path : fontPaths) {
+        promptFont = TTF_OpenFont(path.c_str(), 20);
+        if (promptFont) {
+            std::cout << "WorldView: Loaded prompt font: " << path << std::endl;
+            break;
+        }
+    }
+
+    if (!promptFont) {
+        std::cerr << "WorldView: Warning — could not load any font for floating prompt\n";
+    }
+}
+
+WorldView::~WorldView() {
+    if (promptFont) TTF_CloseFont(promptFont);
+}
+
+void WorldView::setPrompt(const std::string& prompt, bool visible) {
+    currentPrompt = prompt;
+    showPrompt = visible && !prompt.empty();
+}
 
 const NPC* WorldView::getNPCInCrosshair(const Map& map, const Vec2& playerPos, float viewAngle, float maxDistance) {
-    // Cast a ray from the center of the screen (where crosshair is)
     Vec2 rayDir(std::cos(viewAngle), std::sin(viewAngle));
-    
     const float rayStep = 0.1f;
-    
-    // Check along the ray
+
     for (float dist = 0.1f; dist < maxDistance; dist += rayStep) {
         Vec2 checkPos = playerPos + rayDir * dist;
-        
-        // Check NPCs
+
         for (const auto& npc : map.npcs) {
             float minY, maxY;
             if (npc.shape->intersectsVerticalLine(checkPos.x, minY, maxY)) {
@@ -25,42 +51,32 @@ const NPC* WorldView::getNPCInCrosshair(const Map& map, const Vec2& playerPos, f
             }
         }
     }
-    
     return nullptr;
 }
 
 void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playerPos, float viewAngle) {
-    // Render the 1D side view as a horizontal line in the center
     int viewHeight = 60;
-    int viewStartY = (screenHeight - textAreaHeight) / 2 - viewHeight / 2;
-    
-    // Calculate view direction
-    Vec2 viewDir(std::cos(viewAngle), std::sin(viewAngle));
-    
-    // Render the horizontal line - 180 degree field of view
+    int viewStartY = (screenHeight / 2) - viewHeight / 2;  // centered vertically
     int centerY = viewStartY + viewHeight / 2;
-    const float FOV = M_PI/2; // 180 degrees
+
+    Vec2 viewDir(std::cos(viewAngle), std::sin(viewAngle));
+
+    const float FOV = M_PI / 2;
     const float maxRayDistance = 50.0f;
     const float rayStep = 0.2f;
-    
+
     for (int i = 0; i < screenWidth; i++) {
-        // Map pixel to angle within FOV (-90 to +90 degrees from view direction)
         float screenPercent = (float)i / screenWidth;
         float angle = viewAngle + (screenPercent - 0.5f) * FOV;
-        
-        // Cast a ray in this direction
         Vec2 rayDir(std::cos(angle), std::sin(angle));
-        
-        // Ray marching to find intersection
+
         bool hitWall = false;
         bool hitNPC = false;
         float minDist = maxRayDistance;
-        
-        // Check at multiple distances along the ray
+
         for (float dist = 0.1f; dist < maxRayDistance; dist += rayStep) {
             Vec2 checkPos = playerPos + rayDir * dist;
-            
-            // Check shapes (walls)
+
             for (const auto& shape : map.shapes) {
                 float minY, maxY;
                 if (shape->intersectsVerticalLine(checkPos.x, minY, maxY)) {
@@ -72,8 +88,7 @@ void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playe
                     }
                 }
             }
-            
-            // Check NPCs
+
             for (const auto& npc : map.npcs) {
                 float minY, maxY;
                 if (npc.shape->intersectsVerticalLine(checkPos.x, minY, maxY)) {
@@ -86,43 +101,56 @@ void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playe
                 }
             }
         }
-        
-        done_checking:
-        
-        // Draw the pixel on the horizontal line
+    done_checking:
+
         if (hitWall || hitNPC) {
-            // Calculate brightness based on distance
             float brightness = 1.0f - (minDist / 30.0f);
             brightness = std::max(0.2f, std::min(1.0f, brightness));
-            
+
             if (hitWall) {
-                SDL_SetRenderDrawColor(renderer, 
-                                     (Uint8)(255 * brightness), 
-                                     (Uint8)(255 * brightness), 
-                                     (Uint8)(255 * brightness), 255);
+                SDL_SetRenderDrawColor(renderer, (Uint8)(255 * brightness), (Uint8)(255 * brightness), (Uint8)(255 * brightness), 255);
             } else {
-                SDL_SetRenderDrawColor(renderer, 
-                                     (Uint8)(255 * brightness), 
-                                     (Uint8)(100 * brightness), 
-                                     (Uint8)(100 * brightness), 255);
+                SDL_SetRenderDrawColor(renderer, (Uint8)(255 * brightness), (Uint8)(100 * brightness), (Uint8)(100 * brightness), 255);
             }
-            
             SDL_RenderDrawPoint(renderer, i, centerY);
         } else {
-            // Draw black/empty space
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderDrawPoint(renderer, i, centerY);
         }
     }
-    
-    // Draw orange crosshair at center
+
+    // Orange crosshair
     int centerX = screenWidth / 2;
     int crosshairSize = 8;
-    SDL_SetRenderDrawColor(renderer, 255, 165, 0, 180); // Orange with some transparency
-    
-    // Horizontal line
+    SDL_SetRenderDrawColor(renderer, 255, 165, 0, 200);
     SDL_RenderDrawLine(renderer, centerX - crosshairSize, centerY, centerX + crosshairSize, centerY);
-    
-    // Vertical line
     SDL_RenderDrawLine(renderer, centerX, centerY - crosshairSize, centerX, centerY + crosshairSize);
+
+    // Floating prompt under crosshair
+    if (showPrompt && promptFont) {
+        SDL_Color textColor = {255, 220, 100, 255};  // Light yellow
+        SDL_Color bgColor   = {0, 0, 0, 160};
+
+        SDL_Surface* textSurface = TTF_RenderText_Blended(promptFont, currentPrompt.c_str(), textColor);
+        if (textSurface) {
+            SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+
+            int textW = textSurface->w;
+            int textH = textSurface->h;
+
+            int promptY = centerY + 35;  // ~35px below crosshair
+
+            // Background rectangle
+            SDL_Rect bgRect = {centerX - textW/2 - 10, promptY - 5, textW + 20, textH + 10};
+            SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+            SDL_RenderFillRect(renderer, &bgRect);
+
+            // Text
+            SDL_Rect dstRect = {centerX - textW/2, promptY, textW, textH};
+            SDL_RenderCopy(renderer, textTexture, nullptr, &dstRect);
+
+            SDL_DestroyTexture(textTexture);
+            SDL_FreeSurface(textSurface);
+        }
+    }
 }
