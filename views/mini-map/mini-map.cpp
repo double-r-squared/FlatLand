@@ -2,6 +2,7 @@
 #include "../../npc/Shapes/Rectangle.hh"
 #include "../../npc/Shapes/Triangle.hh"
 #include "../../npc/Shapes/Circle.hh"
+#include "../../npc/Shapes/Line.hh"
 #include <cmath>
 
 MiniMap::MiniMap(int size, int screenWidth) : size(size), screenWidth(screenWidth) {}
@@ -59,6 +60,19 @@ void MiniMap::render(SDL_Renderer* renderer, const Map& map, const Vec2& playerP
                 {(int)(offsetX + tri->p1.x * scale), (int)(offsetY + tri->p1.y * scale)}
             };
             SDL_RenderDrawLines(renderer, points, 4);
+        }
+    }
+    
+    // Draw lines on minimap
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    for (const auto& line : map.lines) {
+        const auto& points = line->getPoints();
+        for (size_t i = 0; i + 1 < points.size(); ++i) {
+            int x1 = (int)(offsetX + points[i].x * scale);
+            int y1 = (int)(offsetY + points[i].y * scale);
+            int x2 = (int)(offsetX + points[i + 1].x * scale);
+            int y2 = (int)(offsetY + points[i + 1].y * scale);
+            SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
         }
     }
     

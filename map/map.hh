@@ -2,6 +2,7 @@
 #define MAP_HH
 
 #include "../npc/Shape.hh"
+#include "../npc/Shapes/Line.hh"
 #include "../npc/npc.hh"
 #include <vector>
 #include <memory>
@@ -10,6 +11,7 @@
 class Map {
 public:
     std::vector<std::shared_ptr<Shape>> shapes;
+    std::vector<std::shared_ptr<Line>> lines;
     std::vector<NPC> npcs;
     std::string name;
     

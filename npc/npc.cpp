@@ -2,21 +2,17 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <sys/stat.h>  // for stat() in hasAvatar()
 
-NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId, std::string npcName, std::string avatar) 
-    : shape(s), velocity(vel), id(npcId), name(npcName), avatarPath(avatar),
-      conversationState(IDLE), currentNodeId(""), conversationCount(0), startNodeId("start") {
-    
-    // If no ID provided, generate a default one
+NPC::NPC(std::shared_ptr<Shape> s, Vec2 vel, std::string npcId)
+    : shape(s), velocity(vel), id(std::move(npcId)),
+      conversationState(IDLE), currentNodeId(""), conversationCount(0), startNodeId("start")
+{
+    // If no ID provided, generate a fallback
     if (id.empty()) {
-        std::cout << "WARNING: NO ID PROVIDED" << std::endl;
+        std::cout << "WARNING: NO ID PROVIDED FOR NPC" << std::endl;
         static int npcCounter = 0;
         id = "npc_" + std::to_string(npcCounter++);
-    }
-    
-    // If no name provided, use ID as name
-    if (name.empty()) {
-        name = id;
     }
 }
 
@@ -37,7 +33,7 @@ void NPC::startConversation() {
     conversationState = ACTIVE;
     resetDialogue();
     
-    std::cout << "Started conversation with " << name << std::endl;
+    std::cout << "Started conversation with " << id << std::endl;
 }
 
 bool NPC::advanceConversation() {
@@ -73,7 +69,7 @@ bool NPC::advanceConversation() {
 void NPC::endConversation() {
     conversationState = IDLE;
     resetDialogue();
-    std::cout << "Ended conversation with " << name << std::endl;
+    std::cout << "Ended conversation with " << id << std::endl;
 }
 
 // ============================================================================
@@ -85,7 +81,7 @@ std::string NPC::getCurrentText() const {
         if (hasDialogue()) {
             return "...";  // Dialogue exists but not loaded properly
         } else {
-            return "Hello, I'm " + name + ".";  // Default greeting
+            return "Hello, I'm " + id + ".";  // Default greeting using id
         }
     }
     
@@ -106,22 +102,51 @@ bool NPC::isInConversation() const {
 }
 
 // ============================================================================
+// DERIVED PATHS
+// ============================================================================
+
+std::string NPC::getAvatarPath() const {
+    if (id.empty()) {
+        return "assets/npcs/default.png";
+    }
+    return "assets/npcs/" + id + ".png";
+}
+
+std::string NPC::getDialoguePath() const {
+    if (id.empty()) {
+        return "";
+    }
+    return "dialogues/" + id + ".txt";  // change to .dialogue if that's your extension
+}
+
+bool NPC::hasAvatar() const {
+    struct stat buffer;
+    return stat(getAvatarPath().c_str(), &buffer) == 0;
+}
+
+// ============================================================================
 // DIALOGUE LOADING AND MANAGEMENT
 // ============================================================================
 
 void NPC::ensureDialogueLoaded() {
-    // Only load if we have a dialogue file specified and haven't loaded yet
-    if (!dialogueFile.empty() && dialogueNodes.empty()) {
-        loadDialogue(dialogueFile);
+    // Only load if we haven't loaded yet
+    if (dialogueNodes.empty()) {
+        std::string path = getDialoguePath();
+        if (!path.empty()) {
+            loadDialogue(path);
+        }
     }
 }
 
 bool NPC::hasDialogue() const {
+    // Can be called before loading — triggers lazy load check
+    if (dialogueNodes.empty()) {
+        const_cast<NPC*>(this)->ensureDialogueLoaded();
+    }
     return !dialogueNodes.empty();
 }
 
 void NPC::loadDialogue(const std::string& filepath) {
-    dialogueFile = filepath;
     dialogueNodes.clear();
     startNodeId = "start"; // Default
     
@@ -162,7 +187,7 @@ void NPC::loadDialogue(const std::string& filepath) {
                 startNodeId = value;
                 std::cout << "DEBUG: Found START node: " << startNodeId << std::endl;
             } else if (key == "NODE") {
-                // If we were already in a node, save it first
+                // Save previous node if any
                 if (inNode && !currentNode.id.empty()) {
                     dialogueNodes[currentNode.id] = currentNode;
                 }
@@ -172,14 +197,12 @@ void NPC::loadDialogue(const std::string& filepath) {
                 currentNode.nextNodeIds.clear();
                 inNode = true;
                 
-                // Track first node if start node not specified
                 if (firstNodeId.empty()) {
                     firstNodeId = value;
                 }
             } else if (key == "TEXT") {
                 currentNode.text = value;
             } else if (key == "NEXT") {
-                // Split multiple NEXT options (they might be on separate lines)
                 std::istringstream iss(value);
                 std::string nextNode;
                 while (std::getline(iss, nextNode, ' ')) {
@@ -188,8 +211,7 @@ void NPC::loadDialogue(const std::string& filepath) {
                     }
                 }
             } else if (key == "OPTION") {
-                // For future: handle multiple choice options
-                // For now, just add to nextNodeIds
+                // For future: handle multiple choice
                 size_t spacePos = value.find(' ');
                 if (spacePos != std::string::npos) {
                     std::string nextId = value.substr(0, spacePos);
@@ -199,7 +221,7 @@ void NPC::loadDialogue(const std::string& filepath) {
                 }
             }
         } else {
-            // Line without colon - check if it's a continuation of NEXT values
+            // Continuation line (e.g. more NEXT values)
             if (!line.empty() && inNode && !currentNode.nextNodeIds.empty()) {
                 std::istringstream iss(line);
                 std::string nextNode;
@@ -212,12 +234,12 @@ void NPC::loadDialogue(const std::string& filepath) {
         }
     }
     
-    // Don't forget the last node
+    // Save last node
     if (inNode && !currentNode.id.empty()) {
         dialogueNodes[currentNode.id] = currentNode;
     }
     
-    // If no START was specified, use the first node
+    // Fallback start node
     if (startNodeId.empty() || dialogueNodes.find(startNodeId) == dialogueNodes.end()) {
         if (!firstNodeId.empty()) {
             startNodeId = firstNodeId;
@@ -227,12 +249,12 @@ void NPC::loadDialogue(const std::string& filepath) {
     
     currentNodeId = startNodeId;
     
-    std::cout << "Loaded " << dialogueNodes.size() << " dialogue nodes for " << name << std::endl;
+    std::cout << "Loaded " << dialogueNodes.size() << " dialogue nodes for " << id << std::endl;
     std::cout << "Start node: " << startNodeId << std::endl;
     
-    // DEBUG: Print all nodes
-    for (const auto& [id, node] : dialogueNodes) {
-        std::cout << "  Node '" << id << "': " << node.text << std::endl;
+    // DEBUG print
+    for (const auto& [nodeId, node] : dialogueNodes) {
+        std::cout << "  Node '" << nodeId << "': " << node.text << std::endl;
         std::cout << "    Next: ";
         for (const auto& next : node.nextNodeIds) {
             std::cout << next << " ";
@@ -246,7 +268,5 @@ void NPC::resetDialogue() {
 }
 
 bool NPC::isAtConversationEnd() const {
-    // We're at the end if we've completed at least one full cycle
-    // and we're back at the start node
     return (conversationCount > 0 && currentNodeId == startNodeId);
 }

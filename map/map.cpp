@@ -2,8 +2,10 @@
 #include "../npc/Shapes/Rectangle.hh"
 #include "../npc/Shapes/Triangle.hh"
 #include "../npc/Shapes/Circle.hh"
+#include "../npc/Shapes/Line.hh"
 #include <fstream>
 #include <sstream>
+#include <iostream>
 
 void Map::addShape(std::shared_ptr<Shape> shape) {
     shapes.push_back(shape);
@@ -37,53 +39,154 @@ void Map::save(const std::string& filename) const {
         }
     }
     
+    // Save all NPCs
     for (const auto& npc : npcs) {
         if (auto circ = dynamic_cast<Circle*>(npc.shape.get())) {
             file << "NPC_CIRC," << circ->position.x << "," << circ->position.y << ","
                  << circ->radius << "," << npc.velocity.x << "," << npc.velocity.y << "\n";
         }
     }
+    
+    // Save lines
+    for (const auto& line : lines) {
+        file << "LINE";
+        for (const auto& pt : line->getPoints()) {
+            file << "," << pt.x << "," << pt.y;
+        }
+        file << "\n";
+    }
 }
 
 Map Map::load(const std::string& filename) {
     Map map;
     std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open map file: " << filename << std::endl;
+        return map;
+    }
+
     std::string line;
-    
+
+    // Read MAP: line
     if (std::getline(file, line)) {
         if (line.substr(0, 4) == "MAP:") {
             map.name = line.substr(4);
+        } else {
+            std::cerr << "Invalid map file - expected 'MAP:' on first line" << std::endl;
+            return map;
         }
     }
-    
+
+    int npc_count = 0;
+    int shape_count = 0;
+    int line_count = 0;
+
     while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+
         std::istringstream iss(line);
         std::string type;
         std::getline(iss, type, ',');
-        
+
+        char comma;
+
         if (type == "RECT") {
             float x, y, w, h;
-            char comma;
             iss >> x >> comma >> y >> comma >> w >> comma >> h;
-            map.addShape(std::make_shared<Rectangle>(Vec2(x, y), w, h));
-        } else if (type == "TRI") {
+            if (iss) {
+                map.addShape(std::make_shared<Rectangle>(Vec2(x, y), w, h));
+                shape_count++;
+            }
+        }
+        else if (type == "TRI") {
             float x1, y1, x2, y2, x3, y3;
-            char comma;
             iss >> x1 >> comma >> y1 >> comma >> x2 >> comma >> y2 >> comma >> x3 >> comma >> y3;
-            map.addShape(std::make_shared<Triangle>(Vec2(x1, y1), Vec2(x2, y2), Vec2(x3, y3)));
-        } else if (type == "CIRC") {
+            if (iss) {
+                map.addShape(std::make_shared<Triangle>(
+                    Vec2(x1, y1), Vec2(x2, y2), Vec2(x3, y3)
+                ));
+                shape_count++;
+            }
+        }
+        else if (type == "CIRC") {
             float x, y, r;
-            char comma;
             iss >> x >> comma >> y >> comma >> r;
-            map.addShape(std::make_shared<Circle>(Vec2(x, y), r));
-        } else if (type == "NPC_CIRC") {
+            if (iss) {
+                map.addShape(std::make_shared<Circle>(Vec2(x, y), r));
+                shape_count++;
+            }
+        }
+        else if (type == "NPC_CIRC") {
             float x, y, r, vx, vy;
-            char comma;
+            std::string npc_id;
+
             iss >> x >> comma >> y >> comma >> r >> comma >> vx >> comma >> vy;
-            auto shape = std::make_shared<Circle>(Vec2(x, y), r);
-            map.addNPC(NPC(shape, Vec2(vx, vy)));
+
+            // Read optional identifier/name after the last comma
+            if (iss >> comma) {
+                std::getline(iss, npc_id);
+                // Clean up whitespace
+                npc_id.erase(0, npc_id.find_first_not_of(" \t\r\n"));
+                npc_id.erase(npc_id.find_last_not_of(" \t\r\n") + 1);
+            }
+
+            if (iss) {
+                auto shape = std::make_shared<Circle>(Vec2(x, y), r);
+                // MARK: NPC FACTORY
+                NPC new_npc(shape, Vec2(vx, vy));
+
+                // Store the name/ID if present
+                if (!npc_id.empty()) {
+                    new_npc.id = npc_id;
+                    // You can also do: new_npc.name = npc_id;  // if your NPC has a 'name' field
+                }
+
+                map.addNPC(new_npc);
+                npc_count++;
+            }
+        }
+        else if (type == "LINE") {
+            std::vector<Vec2> linePoints;
+            std::string coord;
+            while (std::getline(iss, coord, ',')) {
+                float x, y;
+                std::istringstream coordIss(coord);
+                coordIss >> x;
+                if (coordIss) {
+                    std::getline(iss, coord, ',');
+                    std::istringstream yIss(coord);
+                    yIss >> y;
+                    if (yIss) {
+                        linePoints.push_back(Vec2(x, y));
+                    }
+                }
+            }
+            if (linePoints.size() >= 2) {
+                map.lines.push_back(std::make_shared<Line>(linePoints));
+                line_count++;
+            }
         }
     }
-    
+
+    // Improved debug output with NPC names/IDs
+    std::cout << "\n=== MAP LOADED DEBUG ===\n";
+    std::cout << "Map name: " << map.name << "\n";
+    std::cout << "Static shapes loaded: " << shape_count << "\n";
+    std::cout << "Lines loaded: " << line_count << "\n";
+    std::cout << "NPCs loaded: " << npc_count << "\n";
+
+    if (!map.npcs.empty()) {
+        std::cout << "NPC list:\n";
+        for (const auto& npc : map.npcs) {
+            std::string id_str = npc.id.empty() ? "(no id)" : npc.id;
+            float x = npc.shape ? npc.shape->position.x : 0.0f;
+            float y = npc.shape ? npc.shape->position.y : 0.0f;
+            std::cout << "  - " << id_str 
+                      << " at (" << x << ", " << y << ")\n";
+        }
+    }
+
+    std::cout << "========================\n\n";
+
     return map;
 }

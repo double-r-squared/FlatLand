@@ -22,47 +22,60 @@ public:
         ACTIVE,    // Currently talking
         ENDING     // Conversation is ending (returned to start after completing cycle)
     };
-    
+
     std::shared_ptr<Shape> shape;
     Vec2 velocity;
-    
+
     // Identity
-    std::string id;              // Unique identifier (e.g., "guard_001")
-    std::string name;            // Display name (e.g., "Town Guard")
-    std::string dialogueFile;    // Path to dialogue file
-    std::string avatarPath;      // Path to avatar image folder
-    
-    NPC(std::shared_ptr<Shape> s, Vec2 vel = Vec2(), 
-        std::string npcId = "", std::string npcName = "", std::string avatar = "");
-    
+    std::string id;              // Unique identifier from map file
+                                 // ALSO used as:
+                                 // - display name in UI
+                                 // - key for avatar & dialogue files
+                                 // Example: "guard1", "caarl", "wizard"
+
+    NPC(std::shared_ptr<Shape> s,
+        Vec2 vel = Vec2(),
+        std::string npcId = "Unnamed");
+
     void update(float dt);
-    
-    // High-level conversation interface
+
+    // ────────────────────────────────────────────────
+    //          High-level conversation interface
+    // ────────────────────────────────────────────────
     bool canTalk() const;                    // Can player start conversation?
     void startConversation();                // Begin conversation
-    bool advanceConversation();              // Continue conversation - returns true if still active
-    void endConversation();                  // End conversation and reset
-    
-    // UI helpers
-    std::string getCurrentText() const;      // Get current dialogue text
-    std::string getPrompt() const;           // Get interaction prompt ("E - Talk", "E - Continue", etc)
-    bool isInConversation() const;           // Check if currently talking
-    
-    // Dialogue loading (auto-loads if needed)
-    void ensureDialogueLoaded();
-    bool hasDialogue() const;
+    bool advanceConversation();              // Continue - returns true if still active
+    void endConversation();                  // End and reset
 
+    // ────────────────────────────────────────────────
+    //                UI / View helpers
+    // ────────────────────────────────────────────────
+    std::string getCurrentText() const;      // Current dialogue line
+    std::string getPrompt() const;           // "E - Talk", "E - Continue", etc.
+    bool isInConversation() const;
+
+    // ────────────────────────────────────────────────
+    //           Derived asset paths (based on id)
+    // ────────────────────────────────────────────────
+    std::string getAvatarPath() const;
+    std::string getDialoguePath() const;
+
+    bool hasDialogue() const;
+    bool hasAvatar() const;                  // Optional: check if file likely exists
+
+    // ────────────────────────────────────────────────
+    //               Internal state
+    // ────────────────────────────────────────────────
 private:
-    // Internal dialogue state
-    ConversationState conversationState;
+    ConversationState conversationState = IDLE;
     std::string currentNodeId;
-    int conversationCount;
-    
-    // Dialogue tree
+    int conversationCount = 0;
+
     std::map<std::string, DialogueNode> dialogueNodes;
-    std::string startNodeId;
-    
-    // Internal dialogue methods
+    std::string startNodeId = "start";
+
+    // Dialogue loading & management
+    void ensureDialogueLoaded();
     void loadDialogue(const std::string& filepath);
     void resetDialogue();
     bool isAtConversationEnd() const;

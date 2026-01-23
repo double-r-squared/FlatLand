@@ -10,6 +10,7 @@
 #include "npc/Shapes/Rectangle.hh"
 #include "npc/Shapes/Triangle.hh"
 #include "npc/Shapes/Circle.hh"
+#include "npc/Shapes/Line.hh"
 #include "npc/npc.hh"
 
 const int WINDOW_WIDTH = 1400;
@@ -23,7 +24,8 @@ enum class Tool {
     CIRCLE,
     NPC,
     SELECT,
-    DELETE
+    DELETE,
+    LINE
 };
 
 class MapBuilder {
@@ -34,11 +36,11 @@ private:
     
     std::vector<std::shared_ptr<Shape>> shapes;
     std::vector<NPC> npcs;
+    std::vector<std::shared_ptr<Line>> lines;
     
     Tool currentTool;
     Vec2 clickStart;
     bool isDragging;
-    int selectedShape;
     int selectedNPC;  // Track selected NPC for editing
     
     // Camera
@@ -48,13 +50,16 @@ private:
     // For triangle creation
     std::vector<Vec2> trianglePoints;
     
+    // For line creation
+    std::vector<Vec2> currentLinePoints;
+    
     // Map name
     std::string mapName;
     
 public:
     MapBuilder() : window(nullptr), renderer(nullptr), running(true),
                    currentTool(Tool::RECTANGLE), isDragging(false),
-                   selectedShape(-1), selectedNPC(-1), 
+                   selectedNPC(-1), 
                    cameraOffset(50, 400), zoom(10.0f),
                    mapName("Untitled Map") {
         
@@ -88,9 +93,10 @@ public:
         std::cout << "  R - Rectangle tool" << std::endl;
         std::cout << "  T - Triangle tool (click 3 points)" << std::endl;
         std::cout << "  C - Circle tool" << std::endl;
-        std::cout << "  N - NPC tool" << std::endl;
+        std::cout << "  N - NPC tool (circle-based)" << std::endl;
         std::cout << "  D - Delete tool" << std::endl;
-        std::cout << "  E - Edit selected NPC properties" << std::endl;
+        std::cout << "  Q - Line tool (click to add points, press Q again to finish line, D to delete last point)" << std::endl;
+        std::cout << "  E - Edit selected NPC ID" << std::endl;
         std::cout << "  S - Save map" << std::endl;
         std::cout << "  L - Load map" << std::endl;
         std::cout << "  Arrow Keys - Pan camera" << std::endl;
@@ -126,43 +132,16 @@ public:
         
         std::cout << "\n=== Editing NPC ===" << std::endl;
         std::cout << "Current ID: " << npc.id << std::endl;
-        std::cout << "Current Name: " << npc.name << std::endl;
-        std::cout << "Current Dialogue File: " << npc.dialogueFile << std::endl;
-        std::cout << "Current Avatar Path: " << npc.avatarPath << std::endl;
         
         std::cout << "\nEnter new ID (or press Enter to keep current): ";
         std::string newId;
         std::getline(std::cin, newId);
         if (!newId.empty()) {
             npc.id = newId;
+            std::cout << "ID updated to: " << npc.id << std::endl;
+        } else {
+            std::cout << "ID unchanged" << std::endl;
         }
-        
-        std::cout << "Enter new Name (or press Enter to keep current): ";
-        std::string newName;
-        std::getline(std::cin, newName);
-        if (!newName.empty()) {
-            npc.name = newName;
-        }
-        
-        std::cout << "Enter dialogue file path (or press Enter to keep current): ";
-        std::string newDialogue;
-        std::getline(std::cin, newDialogue);
-        if (!newDialogue.empty()) {
-            npc.dialogueFile = newDialogue;
-        }
-        
-        std::cout << "Enter avatar folder path (or press Enter to keep current): ";
-        std::string newAvatar;
-        std::getline(std::cin, newAvatar);
-        if (!newAvatar.empty()) {
-            npc.avatarPath = newAvatar;
-        }
-        
-        std::cout << "\nNPC updated!" << std::endl;
-        std::cout << "  ID: " << npc.id << std::endl;
-        std::cout << "  Name: " << npc.name << std::endl;
-        std::cout << "  Dialogue: " << npc.dialogueFile << std::endl;
-        std::cout << "  Avatar: " << npc.avatarPath << std::endl;
     }
     
     void selectNPCAtPosition(Vec2 worldPos) {
@@ -173,7 +152,7 @@ public:
             if (npcs[i].shape->intersectsVerticalLine(worldPos.x, minY, maxY)) {
                 if (worldPos.y >= minY && worldPos.y <= maxY) {
                     selectedNPC = i;
-                    std::cout << "Selected NPC: " << npcs[i].name << " (" << npcs[i].id << ")" << std::endl;
+                    std::cout << "Selected NPC: " << npcs[i].id << std::endl;
                     return;
                 }
             }
@@ -192,7 +171,32 @@ public:
                     case SDLK_t: currentTool = Tool::TRIANGLE; trianglePoints.clear(); std::cout << "Triangle tool selected (click 3 points)" << std::endl; break;
                     case SDLK_c: currentTool = Tool::CIRCLE; std::cout << "Circle tool selected" << std::endl; break;
                     case SDLK_n: currentTool = Tool::NPC; std::cout << "NPC tool selected" << std::endl; break;
-                    case SDLK_d: currentTool = Tool::DELETE; std::cout << "Delete tool selected" << std::endl; break;
+                    case SDLK_d: 
+                        if (currentTool == Tool::LINE) {
+                            if (!currentLinePoints.empty()) {
+                                currentLinePoints.pop_back();
+                                std::cout << "Last line point removed" << std::endl;
+                            }
+                        } else {
+                            currentTool = Tool::DELETE; 
+                            std::cout << "Delete tool selected" << std::endl;
+                        }
+                        break;
+                    case SDLK_q: 
+                        if (currentTool == Tool::LINE) {
+                            // Finish the line
+                            if (currentLinePoints.size() >= 2) {
+                                lines.push_back(std::make_shared<Line>(currentLinePoints));
+                                std::cout << "Line created with " << currentLinePoints.size() << " points" << std::endl;
+                            }
+                            currentLinePoints.clear();
+                            currentTool = Tool::RECTANGLE; // Default back
+                        } else {
+                            currentTool = Tool::LINE; 
+                            currentLinePoints.clear();
+                            std::cout << "Line tool selected (click to add points, press Q to finish)" << std::endl;
+                        }
+                        break;
                     case SDLK_e: editNPCProperties(selectedNPC); break;
                     case SDLK_s: saveMap(); break;
                     case SDLK_l: loadMap(); break;
@@ -215,7 +219,7 @@ public:
                         if (currentTool == Tool::TRIANGLE) {
                             trianglePoints.push_back(worldPos);
                             std::cout << "Triangle point " << trianglePoints.size() << ": (" 
-                                     << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+                                      << worldPos.x << ", " << worldPos.y << ")" << std::endl;
                             
                             if (trianglePoints.size() == 3) {
                                 shapes.push_back(std::make_shared<Triangle>(
@@ -225,7 +229,7 @@ public:
                                 trianglePoints.clear();
                             }
                         } else if (currentTool == Tool::DELETE) {
-                            // Find and delete shape at click position
+                            // Delete shape
                             for (int i = shapes.size() - 1; i >= 0; i--) {
                                 float minY, maxY;
                                 if (shapes[i]->intersectsVerticalLine(worldPos.x, minY, maxY)) {
@@ -237,12 +241,12 @@ public:
                                 }
                             }
                             
-                            // Also check NPCs
+                            // Delete NPC
                             for (int i = npcs.size() - 1; i >= 0; i--) {
                                 float minY, maxY;
                                 if (npcs[i].shape->intersectsVerticalLine(worldPos.x, minY, maxY)) {
                                     if (worldPos.y >= minY && worldPos.y <= maxY) {
-                                        std::cout << "Deleted NPC: " << npcs[i].name << std::endl;
+                                        std::cout << "Deleted NPC: " << npcs[i].id << std::endl;
                                         npcs.erase(npcs.begin() + i);
                                         if (selectedNPC == i) selectedNPC = -1;
                                         break;
@@ -251,13 +255,15 @@ public:
                             }
                         } else if (currentTool == Tool::SELECT) {
                             selectNPCAtPosition(worldPos);
+                        } else if (currentTool == Tool::LINE) {
+                            currentLinePoints.push_back(worldPos);
+                            std::cout << "Line point added: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
                         } else {
                             clickStart = worldPos;
                             isDragging = true;
                         }
                     }
                 } else if (event.button.button == SDL_BUTTON_RIGHT) {
-                    // Right click to select NPC
                     int mx = event.button.x;
                     int my = event.button.y;
                     if (mx < WINDOW_WIDTH - TOOLBAR_WIDTH) {
@@ -289,34 +295,24 @@ public:
                             auto circle = std::make_shared<Circle>(center, radius);
                             
                             if (currentTool == Tool::NPC) {
-                                // Prompt for NPC details
+                                // Prompt only for ID
                                 std::cout << "\n=== Creating New NPC ===" << std::endl;
-                                std::cout << "Enter NPC ID: ";
+                                std::cout << "Enter NPC ID (used for name, avatar, dialogue): ";
                                 std::string npcId;
                                 std::getline(std::cin, npcId);
                                 
-                                std::cout << "Enter NPC Name: ";
-                                std::string npcName;
-                                std::getline(std::cin, npcName);
-                                
-                                std::cout << "Enter dialogue file path (optional): ";
-                                std::string dialoguePath;
-                                std::getline(std::cin, dialoguePath);
-                                
-                                std::cout << "Enter avatar folder path (optional, e.g., assets/npcs/guard): ";
-                                std::string avatarPath;
-                                std::getline(std::cin, avatarPath);
+                                if (npcId.empty()) {
+                                    npcId = "unnamed_" + std::to_string(npcs.size());
+                                    std::cout << "Using auto-generated ID: " << npcId << std::endl;
+                                }
                                 
                                 // Default velocity: moving right
-                                NPC newNPC(circle, Vec2(2, 0), npcId, npcName, avatarPath);
-                                if (!dialoguePath.empty()) {
-                                    newNPC.dialogueFile = dialoguePath;
-                                }
+                                NPC newNPC(circle, Vec2(2, 0), npcId);
                                 
                                 npcs.push_back(newNPC);
                                 selectedNPC = npcs.size() - 1;
                                 
-                                std::cout << "NPC created: " << npcName << " (" << npcId << ")" << std::endl;
+                                std::cout << "NPC created with ID: " << npcId << std::endl;
                             } else {
                                 shapes.push_back(circle);
                                 std::cout << "Circle created at (" << center.x << ", " << center.y << ") radius " << radius << std::endl;
@@ -335,9 +331,7 @@ public:
         std::string filename;
         std::getline(std::cin, filename);
         
-        if (filename.empty()) {
-            filename = "level";
-        }
+        if (filename.empty()) filename = "level";
         
         filename = "map/" + filename + ".map";
         
@@ -358,16 +352,24 @@ public:
             }
         }
         
-        // Here the NPC file is stored 
+        // Save NPCs with only id
         for (const auto& npc : npcs) {
             if (auto circ = dynamic_cast<Circle*>(npc.shape.get())) {
                 file << "NPC_CIRC," 
                      << circ->position.x << "," << circ->position.y << ","
                      << circ->radius << "," 
                      << npc.velocity.x << "," << npc.velocity.y << ","
-                     << npc.id << "," << npc.name << "," 
-                     << npc.dialogueFile << "," << npc.avatarPath << "\n";
+                     << npc.id << "\n";
             }
+        }
+        
+        // Save lines
+        for (const auto& line : lines) {
+            file << "LINE";
+            for (const auto& pt : line->getPoints()) {
+                file << "," << pt.x << "," << pt.y;
+            }
+            file << "\n";
         }
         
         std::cout << "Map saved to " << filename << std::endl;
@@ -390,6 +392,7 @@ public:
         
         shapes.clear();
         npcs.clear();
+        lines.clear();
         selectedNPC = -1;
         
         std::string line;
@@ -400,46 +403,70 @@ public:
         }
         
         while (std::getline(file, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            
             std::istringstream iss(line);
             std::string type;
             std::getline(iss, type, ',');
             
+            char comma;
+            
             if (type == "RECT") {
                 float x, y, w, h;
-                char comma;
                 iss >> x >> comma >> y >> comma >> w >> comma >> h;
-                shapes.push_back(std::make_shared<Rectangle>(Vec2(x, y), w, h));
+                if (iss) {
+                    shapes.push_back(std::make_shared<Rectangle>(Vec2(x, y), w, h));
+                }
             } else if (type == "TRI") {
                 float x1, y1, x2, y2, x3, y3;
-                char comma;
                 iss >> x1 >> comma >> y1 >> comma >> x2 >> comma >> y2 >> comma >> x3 >> comma >> y3;
-                shapes.push_back(std::make_shared<Triangle>(Vec2(x1, y1), Vec2(x2, y2), Vec2(x3, y3)));
+                if (iss) {
+                    shapes.push_back(std::make_shared<Triangle>(Vec2(x1,y1), Vec2(x2,y2), Vec2(x3,y3)));
+                }
             } else if (type == "CIRC") {
                 float x, y, r;
-                char comma;
                 iss >> x >> comma >> y >> comma >> r;
-                shapes.push_back(std::make_shared<Circle>(Vec2(x, y), r));
+                if (iss) {
+                    shapes.push_back(std::make_shared<Circle>(Vec2(x, y), r));
+                }
             } else if (type == "NPC_CIRC") {
                 float x, y, r, vx, vy;
-                std::string npcId, npcName, dialoguePath, avatarPath;
+                std::string npcId;
                 
-                // Parse the numbers
-                char comma;
-                iss >> x >> comma >> y >> comma >> r >> comma >> vx >> comma >> vy >> comma;
+                iss >> x >> comma >> y >> comma >> r >> comma >> vx >> comma >> vy;
                 
-                // Parse the strings
-                std::getline(iss, npcId, ',');
-                std::getline(iss, npcName, ',');
-                std::getline(iss, dialoguePath, ',');
-                std::getline(iss, avatarPath);  // Get the rest
+                // Optional id
+                if (iss >> comma) {
+                    std::getline(iss, npcId);
+                    // Clean whitespace
+                    npcId.erase(0, npcId.find_first_not_of(" \t\r\n"));
+                    npcId.erase(npcId.find_last_not_of(" \t\r\n") + 1);
+                }
                 
-                auto shape = std::make_shared<Circle>(Vec2(x, y), r);
-                
-                // Create NPC with all parameters
-                NPC newNPC(shape, Vec2(vx, vy), npcId, npcName, avatarPath);
-                newNPC.dialogueFile = dialoguePath;  // Set dialogue file separately
-                
-                map.addNPC(newNPC);
+                if (iss) {
+                    auto shape = std::make_shared<Circle>(Vec2(x, y), r);
+                    NPC newNPC(shape, Vec2(vx, vy), npcId);
+                    npcs.push_back(newNPC);
+                }
+            } else if (type == "LINE") {
+                std::vector<Vec2> linePoints;
+                std::string coord;
+                while (std::getline(iss, coord, ',')) {
+                    float x, y;
+                    std::istringstream coordIss(coord);
+                    coordIss >> x;
+                    if (coordIss) {
+                        std::getline(iss, coord, ',');
+                        std::istringstream yIss(coord);
+                        yIss >> y;
+                        if (yIss) {
+                            linePoints.push_back(Vec2(x, y));
+                        }
+                    }
+                }
+                if (linePoints.size() >= 2) {
+                    lines.push_back(std::make_shared<Line>(linePoints));
+                }
             }
         }
         
@@ -448,7 +475,6 @@ public:
     }
     
     void render() {
-        // Clear screen
         SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
         SDL_RenderClear(renderer);
         
@@ -465,7 +491,7 @@ public:
             SDL_RenderDrawLine(renderer, start.x, start.y, end.x, end.y);
         }
         
-        // Draw Y=0 axis (ground)
+        // Y=0 axis
         SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
         Vec2 axisStart = worldToScreen(Vec2(-50, 0));
         Vec2 axisEnd = worldToScreen(Vec2(100, 0));
@@ -499,15 +525,41 @@ public:
             }
         }
         
+        // Draw lines
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255); // Yellow for lines
+        for (const auto& line : lines) {
+            const auto& points = line->getPoints();
+            for (size_t i = 0; i + 1 < points.size(); ++i) {
+                Vec2 p1 = worldToScreen(points[i]);
+                Vec2 p2 = worldToScreen(points[i+1]);
+                SDL_RenderDrawLine(renderer, p1.x, p1.y, p2.x, p2.y);
+            }
+        }
+        
+        // Draw current line points
+        if (!currentLinePoints.empty()) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            for (size_t i = 0; i + 1 < currentLinePoints.size(); ++i) {
+                Vec2 p1 = worldToScreen(currentLinePoints[i]);
+                Vec2 p2 = worldToScreen(currentLinePoints[i+1]);
+                SDL_RenderDrawLine(renderer, p1.x, p1.y, p2.x, p2.y);
+            }
+            // Draw points
+            for (const auto& pt : currentLinePoints) {
+                Vec2 screen = worldToScreen(pt);
+                SDL_Rect r = {(int)screen.x - 3, (int)screen.y - 3, 6, 6};
+                SDL_RenderFillRect(renderer, &r);
+            }
+        }
+        
         // Draw NPCs
         for (size_t i = 0; i < npcs.size(); i++) {
             const auto& npc = npcs[i];
             
-            // Highlight selected NPC
             if ((int)i == selectedNPC) {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 100, 255);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 100, 255); // yellow highlight
             } else {
-                SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+                SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255); // red
             }
             
             if (auto circ = dynamic_cast<Circle*>(npc.shape.get())) {
@@ -521,13 +573,13 @@ public:
                         center.x + r * std::cos(angle2), center.y - r * std::sin(angle2));
                 }
                 
-                // Draw velocity arrow
+                // Velocity arrow
                 Vec2 arrowEnd = worldToScreen(Vec2(circ->position.x + npc.velocity.x, circ->position.y + npc.velocity.y));
                 SDL_RenderDrawLine(renderer, center.x, center.y, arrowEnd.x, arrowEnd.y);
             }
         }
         
-        // Draw triangle points in progress
+        // Triangle in progress
         if (!trianglePoints.empty()) {
             SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
             for (const auto& pt : trianglePoints) {
@@ -537,7 +589,7 @@ public:
             }
         }
         
-        // Draw current drag
+        // Drag preview
         if (isDragging) {
             int mx, my;
             SDL_GetMouseState(&mx, &my);
@@ -561,27 +613,25 @@ public:
                     float angle1 = i * 2 * M_PI / 32;
                     float angle2 = (i + 1) * 2 * M_PI / 32;
                     SDL_RenderDrawLine(renderer,
-                        center.x + r * std::cos(angle1), center.y + r * std::sin(angle1),
-                        center.x + r * std::cos(angle2), center.y + r * std::sin(angle2));
+                        center.x + r * std::cos(angle1), center.y - r * std::sin(angle1),
+                        center.x + r * std::cos(angle2), center.y - r * std::sin(angle2));
                 }
             }
         }
         
-        // Draw toolbar
+        // Toolbar background
         SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
         SDL_Rect toolbar = {WINDOW_WIDTH - TOOLBAR_WIDTH, 0, TOOLBAR_WIDTH, WINDOW_HEIGHT - PREVIEW_HEIGHT};
         SDL_RenderFillRect(renderer, &toolbar);
         
-        // Draw preview
+        // Preview area
         SDL_SetRenderDrawColor(renderer, 20, 20, 40, 255);
         SDL_Rect preview = {WINDOW_WIDTH - TOOLBAR_WIDTH, WINDOW_HEIGHT - PREVIEW_HEIGHT, TOOLBAR_WIDTH, PREVIEW_HEIGHT};
         SDL_RenderFillRect(renderer, &preview);
         
-        // Draw preview label
         SDL_SetRenderDrawColor(renderer, 100, 100, 150, 255);
         SDL_RenderDrawRect(renderer, &preview);
         
-        // Draw 1D preview (simplified version of game view)
         renderPreview();
         
         SDL_RenderPresent(renderer);
@@ -592,14 +642,12 @@ public:
         int previewWidth = TOOLBAR_WIDTH - 40;
         int previewX = WINDOW_WIDTH - TOOLBAR_WIDTH + 20;
         
-        // Simulate player position
         Vec2 playerPos(5, 2.5);
         float viewAngle = 0;
         
         SDL_SetRenderDrawColor(renderer, 100, 100, 150, 255);
         SDL_RenderDrawLine(renderer, previewX, previewY, previewX + previewWidth, previewY);
         
-        // Simple preview rendering
         for (int i = 0; i < previewWidth; i++) {
             float screenPercent = (float)i / previewWidth;
             float angle = viewAngle + (screenPercent - 0.5f) * M_PI;
@@ -638,6 +686,19 @@ public:
         }
     }
     
+    // Function to check if a key is pressed
+    bool isKeyPressed(char key) {
+        const Uint8* state = SDL_GetKeyboardState(NULL);
+        return state[SDL_GetScancodeFromKey(key)];
+    }
+
+    // Function to get the current mouse position
+    Vec2 getMousePosition() {
+        int x, y;
+        SDL_GetMouseState(&x, &y);
+        return Vec2(x, y);
+    }
+    
     void run() {
         while (running) {
             handleEvents();
@@ -647,7 +708,7 @@ public:
     }
 };
 
-int main(int argc, char* argv[]) {
+int main() {
     MapBuilder builder;
     builder.run();
     return 0;

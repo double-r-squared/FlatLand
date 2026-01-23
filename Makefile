@@ -26,6 +26,7 @@ SOURCES = game.cpp \
           $(SHAPES_DIR)/Rectangle.cpp \
           $(SHAPES_DIR)/Triangle.cpp \
           $(SHAPES_DIR)/Circle.cpp \
+          $(SHAPES_DIR)/Line.cpp \
 		  $(MENU_DIR)/start-menu.cpp\
           $(DIALOGUE_DIR)/dialogue-box.cpp \
           $(MINIMAP_DIR)/mini-map.cpp \
@@ -37,7 +38,8 @@ BUILDER_SOURCES = map-builder.cpp \
                   $(NPC_DIR)/npc.cpp \
                   $(SHAPES_DIR)/Rectangle.cpp \
                   $(SHAPES_DIR)/Triangle.cpp \
-                  $(SHAPES_DIR)/Circle.cpp
+                  $(SHAPES_DIR)/Circle.cpp \
+                  $(SHAPES_DIR)/Line.cpp
 
 # Object files
 OBJECTS = $(SOURCES:.cpp=.o)

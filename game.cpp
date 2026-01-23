@@ -136,10 +136,6 @@ public:
             "assets/fonts/Minecraft/Minecraft-Regular.otf",
             "assets/fonts/Minecraft/Minecraft-Bold.otf",
             "assets/fonts/Minecraft/Minecraft-BoldItalic.otf",
-            "assets/fonts/Minecraft/Minecraft-Italic.otf",
-            "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
         };
 
         bool fontLoaded = false;
@@ -162,67 +158,20 @@ public:
         worldView = std::make_unique<WorldView>(SCREEN_WIDTH, SCREEN_HEIGHT);
 
         // ================= MAP LOAD =================
-        map.name = "Town";
-
-        std::ifstream testFile("map/caarlHouse.map");
+        std::ifstream testFile("map/town.map");
         if (testFile.good()) {
             testFile.close();
-            map = Map::load("map/caarlHouse.map");
-            std::cout << "Loaded map from caarlHouse.map" << std::endl;
-
-            // ===== NPC AVATAR FIXUP =====
-            std::cout << "\n=== CHECKING NPC AVATAR PATHS ===\n";
-            for (auto& npc : map.npcs) {
-                std::cout << "NPC: " << npc.name << " (ID: " << npc.id << ")\n";
-                std::cout << "Original avatar path: '" << npc.avatarPath << "'\n";
-
-                if (npc.avatarPath.empty()) {
-                    npc.avatarPath = "assets/npc";
-                    std::cout << "  -> Fixed: Set avatar path to: " << npc.avatarPath << "\n";
-                }
-            }
-            std::cout << "=== END AVATAR CHECK ===\n\n";
+            map = Map::load("map/town.map");
+            std::cout << "Loaded map from town.map" << std::endl;
 
             // ===== DIALOGUE RESOLUTION =====
-            std::cout << "\n=== DIALOGUE LOADING DEBUG ===\n";
-            for (auto& npc : map.npcs) {
-                std::cout << "\nNPC: " << npc.name << " (ID: " << npc.id << ")\n";
-                std::cout << "Avatar path: " << npc.avatarPath << "\n";
-                std::cout << "Dialogue file: " << npc.dialogueFile << "\n";
-
-                std::string originalPath = npc.dialogueFile;
-                std::vector<std::string> possiblePaths;
-                possiblePaths.push_back(npc.dialogueFile);
-
-                if (npc.dialogueFile.find("../") == 0) {
-                    possiblePaths.push_back(npc.dialogueFile.substr(3));
-                    possiblePaths.push_back("dialogues/" + npc.dialogueFile.substr(3));
-                }
-
-                possiblePaths.push_back("dialogues/" + npc.id + ".dialogue");
-                possiblePaths.push_back("dialogues/" + npc.name + ".dialogue");
-
-                if (npc.dialogueFile.find(".dialogue") == std::string::npos) {
-                    possiblePaths.push_back(npc.dialogueFile + ".dialogue");
-                }
-
-                bool dialogueFound = false;
-                for (const auto& path : possiblePaths) {
-                    std::ifstream test(path);
-                    if (test.good()) {
-                        std::cout << "  Found dialogue file at: " << path << "\n";
-                        npc.dialogueFile = path;
-                        dialogueFound = true;
-                        break;
-                    }
-                }
-
-                if (!dialogueFound && !originalPath.empty()) {
-                    std::cout << "  WARNING: Could not find dialogue file\n";
-                    std::cout << "  Tried: " << originalPath << "\n";
-                }
+            std::cout << "\n=== LOADED NPCs ===\n";
+            for (const auto& npc : map.npcs) {
+                std::cout << "  " << npc.id 
+                        << "\n    avatar:  " << npc.getAvatarPath() << "\n"
+                        << "    dialog:  " << npc.getDialoguePath() << "\n";
             }
-            std::cout << "=== END DEBUG ===\n\n";
+            std::cout << "\n=== END DEBUG ===\n\n";
         }
 
         SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -264,7 +213,7 @@ public:
         keyState = SDL_GetKeyboardState(nullptr);
     }
 
-    // ================= UPDATE =================
+    // MARK: UPDATE 
     void update(float dt) {
         if (state == GameState::MENU) {
             startMenu->update(dt);
@@ -275,7 +224,7 @@ public:
             return;
         }
 
-        // ===== ORIGINAL UPDATE CODE (UNCHANGED) =====
+        // Find NPC in crosshair
         const NPC* targetNPCConst =
             worldView->getNPCInCrosshair(map, playerPos, viewAngle, 3.0f);
 
@@ -293,6 +242,7 @@ public:
 
         if (eKeyPressed && !eKeyWasPressed) {
             if (inConversation && currentTalkingNPC) {
+                // Advance dialogue
                 bool continues = currentTalkingNPC->advanceConversation();
                 if (continues) {
                     playerStatsView->setNPCDialogue(
@@ -302,6 +252,7 @@ public:
                         currentTalkingNPC->getPrompt(), true
                     );
                 } else {
+                    // End conversation
                     currentTalkingNPC->endConversation();
                     inConversation = false;
                     currentTalkingNPC = nullptr;
@@ -310,20 +261,32 @@ public:
                 }
             }
             else if (targetNPC && targetNPC->canTalk()) {
+                // Start new conversation
                 targetNPC->startConversation();
                 inConversation = true;
                 currentTalkingNPC = targetNPC;
 
-                playerStatsView->loadNPCPortrait(
-                    renderer,
-                    targetNPC->avatarPath.empty() ? "assets/npc"
-                                                  : targetNPC->avatarPath
-                );
+                // ──────────────────────────────────────────────────────────────
+                // Try to load the specific NPC portrait first
+                // ──────────────────────────────────────────────────────────────
+                std::string specificPath = targetNPC->getAvatarPath();
+                bool loaded = playerStatsView->loadNPCPortrait(renderer, specificPath);
 
-                playerStatsView->showNPC(targetNPC->name);
+                // If specific file failed, try a default directory fallback
+                if (!loaded) {
+                    std::string fallbackDir = "assets/npcs";  // or "assets/npcs/default"
+                    std::cout << "Specific portrait failed, falling back to directory: " 
+                            << fallbackDir << std::endl;
+                    playerStatsView->loadNPCPortrait(renderer, fallbackDir);
+                }
+
+                // Show NPC using its id (display name)
+                playerStatsView->showNPC(targetNPC->id);
+
                 playerStatsView->setNPCDialogue(
                     targetNPC->getCurrentText()
                 );
+
                 worldView->setPrompt(
                     targetNPC->getPrompt(), true
                 );
@@ -348,6 +311,7 @@ public:
             bool collision = false;
             const float playerRadius = 0.5f;
 
+            // Check static shapes
             for (const auto& shape : map.shapes) {
                 float minY, maxY;
                 if (shape->intersectsVerticalLine(newPos.x, minY, maxY)) {
@@ -359,6 +323,7 @@ public:
                 }
             }
 
+            // Check NPCs
             if (!collision) {
                 for (const auto& npc : map.npcs) {
                     float minY, maxY;
@@ -372,12 +337,25 @@ public:
                 }
             }
 
+            // Check lines - use distance-based collision for open lines
+            if (!collision) {
+                for (size_t lineIdx = 0; lineIdx < map.lines.size(); ++lineIdx) {
+                    const auto& line = map.lines[lineIdx];
+                    float dist = line->getClosestDistanceToPoint(newPos);
+                    if (dist < playerRadius) {
+                        collision = true;
+                        break;
+                    }
+                }
+            }
+
             if (!collision) {
                 playerPos = newPos;
             }
 
             map.update(dt);
 
+            // Simple boundary bounce for NPCs
             for (auto& npc : map.npcs) {
                 if (npc.shape->position.x < 0 ||
                     npc.shape->position.x > 50) {
@@ -385,6 +363,7 @@ public:
                 }
             }
 
+            // Update prompt based on look-at target
             if (targetNPC) {
                 worldView->setPrompt(targetNPC->getPrompt(), true);
             } else {
@@ -392,6 +371,8 @@ public:
             }
         }
     }
+
+    // MARK: UPDATE 
 
     // ================= RENDER =================
     void render() {

@@ -100,6 +100,17 @@ void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playe
                     }
                 }
             }
+
+            for (const auto& line : map.lines) {
+                float dist_to_line = line->getClosestDistanceToPoint(checkPos);
+                const float lineThickness = 0.5f;  // Raycast hits if within this distance
+                if (dist_to_line < lineThickness) {
+                    minDist = dist;
+                    hitWall = true;
+                    hitNPC = false;
+                    goto done_checking;
+                }
+            }
         }
     done_checking:
 

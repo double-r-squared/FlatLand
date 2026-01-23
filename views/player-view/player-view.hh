@@ -15,19 +15,19 @@ private:
     std::string playerName;
     SDL_Texture* playerAvatar;
     
-    // NPC portrait (when in conversation)
+    // NPC info (shown during conversation)
     SDL_Texture* npcPortrait;
-    std::string npcName;
-    std::string npcDialogue;  // Current NPC dialogue text
+    std::string npcId;          // NPC's identifier (also used as the display name under portrait)
+    std::string npcDialogue;    // Current dialogue text being shown
     bool showingNPC;
     
-    // Font
-    TTF_Font* font;
-    TTF_Font* dialogueFont;  // Font for dialogue text
+    // Fonts & colors
+    TTF_Font* font;             // For names
+    TTF_Font* dialogueFont;     // For multi-line dialogue text
     SDL_Color textColor;
     SDL_Color dialogueColor;
     
-    // Helper for text wrapping
+    // Text wrapping helper
     std::vector<std::string> wrapText(const std::string& text, int maxWidth, TTF_Font* font);
     
 public:
@@ -35,14 +35,21 @@ public:
     ~PlayerStatsView();
     
     bool loadFont(const std::string& fontPath, int fontSize);
-    bool loadAvatar(SDL_Renderer* renderer, const std::string& avatarPath);
+    
+    // Loads player avatar from a directory (picks first .png found)
+    bool loadAvatar(SDL_Renderer* renderer, const std::string& avatarDirPath);
+    
+    // Loads NPC portrait — expects either a full file path (e.g. "assets/npcs/npc_0.png")
+    // or a directory path (fallback behavior)
     bool loadNPCPortrait(SDL_Renderer* renderer, const std::string& npcAvatarPath);
     
     void setPlayerName(const std::string& name);
-    void showNPC(const std::string& name);
+    
+    // Sets the NPC to show — pass npc.id (which doubles as the visible name)
+    void showNPC(const std::string& npcId);
+    
     void hideNPC();
     
-    // New: Set NPC dialogue text
     void setNPCDialogue(const std::string& dialogue);
     
     void render(SDL_Renderer* renderer);
