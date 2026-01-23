@@ -13,6 +13,7 @@ DIALOGUE_DIR = $(VIEWS_DIR)/dialogue-box
 MINIMAP_DIR = $(VIEWS_DIR)/mini-map
 WORLDVIEW_DIR = $(VIEWS_DIR)/world-view
 PLAYERVIEW_DIR = $(VIEWS_DIR)/player-view
+MENU_DIR = $(VIEWS_DIR)/menu
 
 # Output
 TARGET = game
@@ -25,6 +26,7 @@ SOURCES = game.cpp \
           $(SHAPES_DIR)/Rectangle.cpp \
           $(SHAPES_DIR)/Triangle.cpp \
           $(SHAPES_DIR)/Circle.cpp \
+		  $(MENU_DIR)/start-menu.cpp\
           $(DIALOGUE_DIR)/dialogue-box.cpp \
           $(MINIMAP_DIR)/mini-map.cpp \
           $(WORLDVIEW_DIR)/world-view.cpp \
