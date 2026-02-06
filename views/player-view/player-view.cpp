@@ -1,4 +1,5 @@
 #include "player-view.hh"
+#include "../../player/player.hh"
 #include <iostream>
 #include <dirent.h>
 #include <algorithm>
@@ -192,7 +193,7 @@ std::vector<std::string> PlayerStatsView::wrapText(const std::string& text, int 
     return lines;
 }
 
-void PlayerStatsView::render(SDL_Renderer* renderer) {
+void PlayerStatsView::render(SDL_Renderer* renderer, Player* player) {
     SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
     SDL_Rect bgRect = {x, y, width, height};
     SDL_RenderFillRect(renderer, &bgRect);
@@ -318,6 +319,100 @@ void PlayerStatsView::render(SDL_Renderer* renderer) {
                     SDL_DestroyTexture(texture);
                 }
                 SDL_FreeSurface(surface);
+            }
+        }
+        
+        // Display player stats from Player object
+        if (player && dialogueFont) {
+            int statsX = playerAvatarX + avatarSize + padding + 10;
+            int statsY = y + padding + 10;
+            int statLineHeight = 24;
+            
+            // HP Bar
+            std::string hpText = "HP: " + std::to_string(player->getHitPoints()) + "/" + std::to_string(player->getMaxHitPoints());
+            SDL_Surface* hpSurface = TTF_RenderText_Blended(dialogueFont, hpText.c_str(), dialogueColor);
+            if (hpSurface) {
+                SDL_Texture* hpTexture = SDL_CreateTextureFromSurface(renderer, hpSurface);
+                if (hpTexture) {
+                    SDL_Rect hpRect = {statsX, statsY, hpSurface->w, hpSurface->h};
+                    SDL_RenderCopy(renderer, hpTexture, nullptr, &hpRect);
+                    SDL_DestroyTexture(hpTexture);
+                }
+                SDL_FreeSurface(hpSurface);
+            }
+            
+            // HP Health bar visualization
+            int healthBarWidth = 150;
+            int healthBarHeight = 12;
+            float hpPercent = (float)player->getHitPoints() / player->getMaxHitPoints();
+            int filledWidth = (int)(healthBarWidth * hpPercent);
+            
+            SDL_SetRenderDrawColor(renderer, 50, 50, 50, 255);
+            SDL_Rect healthBarBg = {statsX, statsY + statLineHeight, healthBarWidth, healthBarHeight};
+            SDL_RenderFillRect(renderer, &healthBarBg);
+            
+            // Color based on health
+            int r = (hpPercent < 0.5f) ? 255 : 100;
+            int g = (hpPercent > 0.5f) ? 200 : 100;
+            int b = 100;
+            SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+            SDL_Rect healthBarFill = {statsX, statsY + statLineHeight, filledWidth, healthBarHeight};
+            SDL_RenderFillRect(renderer, &healthBarFill);
+            
+            // Healing Potions
+            std::string healText = "Healing Potions: " + std::to_string(player->getHealingPotions());
+            SDL_Surface* healSurface = TTF_RenderText_Blended(dialogueFont, healText.c_str(), dialogueColor);
+            if (healSurface) {
+                SDL_Texture* healTexture = SDL_CreateTextureFromSurface(renderer, healSurface);
+                if (healTexture) {
+                    SDL_Rect healRect = {statsX, statsY + (statLineHeight * 2), healSurface->w, healSurface->h};
+                    SDL_RenderCopy(renderer, healTexture, nullptr, &healRect);
+                    SDL_DestroyTexture(healTexture);
+                }
+                SDL_FreeSurface(healSurface);
+            }
+            
+            // Vision Potions
+            std::string visionText = "Vision Potions: " + std::to_string(player->getVisionPotions());
+            SDL_Surface* visionSurface = TTF_RenderText_Blended(dialogueFont, visionText.c_str(), dialogueColor);
+            if (visionSurface) {
+                SDL_Texture* visionTexture = SDL_CreateTextureFromSurface(renderer, visionSurface);
+                if (visionTexture) {
+                    SDL_Rect visionRect = {statsX, statsY + (statLineHeight * 3), visionSurface->w, visionSurface->h};
+                    SDL_RenderCopy(renderer, visionTexture, nullptr, &visionRect);
+                    SDL_DestroyTexture(visionTexture);
+                }
+                SDL_FreeSurface(visionSurface);
+            }
+            
+            // Pillars Found
+            const auto& pillars = player->getPillarsPieces();
+            std::string pillarText = "Pillars Found: " + std::to_string(pillars.size());
+            SDL_Surface* pillarSurface = TTF_RenderText_Blended(dialogueFont, pillarText.c_str(), dialogueColor);
+            if (pillarSurface) {
+                SDL_Texture* pillarTexture = SDL_CreateTextureFromSurface(renderer, pillarSurface);
+                if (pillarTexture) {
+                    SDL_Rect pillarRect = {statsX, statsY + (statLineHeight * 4), pillarSurface->w, pillarSurface->h};
+                    SDL_RenderCopy(renderer, pillarTexture, nullptr, &pillarRect);
+                    SDL_DestroyTexture(pillarTexture);
+                }
+                SDL_FreeSurface(pillarSurface);
+            }
+            
+            // List pillars found
+            int pillarListY = statsY + (statLineHeight * 5);
+            for (const auto& pillar : pillars) {
+                SDL_Surface* pSurface = TTF_RenderText_Blended(dialogueFont, ("  - " + pillar).c_str(), textColor);
+                if (pSurface) {
+                    SDL_Texture* pTexture = SDL_CreateTextureFromSurface(renderer, pSurface);
+                    if (pTexture) {
+                        SDL_Rect pRect = {statsX, pillarListY, pSurface->w, pSurface->h};
+                        SDL_RenderCopy(renderer, pTexture, nullptr, &pRect);
+                        SDL_DestroyTexture(pTexture);
+                    }
+                    SDL_FreeSurface(pSurface);
+                }
+                pillarListY += statLineHeight;
             }
         }
     }

@@ -8,9 +8,9 @@ LDFLAGS = -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf -lSDL2_image
 MAP_DIR = map
 NPC_DIR = npc
 SHAPES_DIR = $(NPC_DIR)/Shapes
+PLAYER_DIR = player
 VIEWS_DIR = views
 DIALOGUE_DIR = $(VIEWS_DIR)/dialogue-box
-MINIMAP_DIR = $(VIEWS_DIR)/mini-map
 WORLDVIEW_DIR = $(VIEWS_DIR)/world-view
 PLAYERVIEW_DIR = $(VIEWS_DIR)/player-view
 MENU_DIR = $(VIEWS_DIR)/menu
@@ -27,9 +27,9 @@ SOURCES = game.cpp \
           $(SHAPES_DIR)/Triangle.cpp \
           $(SHAPES_DIR)/Circle.cpp \
           $(SHAPES_DIR)/Line.cpp \
+          $(PLAYER_DIR)/player.cpp \
 		  $(MENU_DIR)/start-menu.cpp\
           $(DIALOGUE_DIR)/dialogue-box.cpp \
-          $(MINIMAP_DIR)/mini-map.cpp \
           $(WORLDVIEW_DIR)/world-view.cpp \
           $(PLAYERVIEW_DIR)/player-view.cpp
 
@@ -39,7 +39,8 @@ BUILDER_SOURCES = map-builder.cpp \
                   $(SHAPES_DIR)/Rectangle.cpp \
                   $(SHAPES_DIR)/Triangle.cpp \
                   $(SHAPES_DIR)/Circle.cpp \
-                  $(SHAPES_DIR)/Line.cpp
+                  $(SHAPES_DIR)/Line.cpp \
+                  $(PLAYER_DIR)/player.cpp
 
 # Object files
 OBJECTS = $(SOURCES:.cpp=.o)

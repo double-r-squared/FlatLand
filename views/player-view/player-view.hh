@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+class Player;  // Forward declaration
+
 class PlayerStatsView {
 private:
     int x, y, width, height;
@@ -52,7 +54,7 @@ public:
     
     void setNPCDialogue(const std::string& dialogue);
     
-    void render(SDL_Renderer* renderer);
+    void render(SDL_Renderer* renderer, Player* player = nullptr);
 };
 
 #endif // PLAYER_VIEW_HH

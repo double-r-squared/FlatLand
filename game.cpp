@@ -9,10 +9,10 @@
 #include "Vec2.hh"
 #include "map/map.hh"
 #include "npc/npc.hh"
+#include "player/player.hh"
 #include "npc/Shapes/Rectangle.hh"
 #include "npc/Shapes/Triangle.hh"
 #include "npc/Shapes/Circle.hh"
-#include "views/mini-map/mini-map.hh"
 #include "views/world-view/world-view.hh"
 #include "views/player-view/player-view.hh"
 #include "views/menu/start-menu.hh"
@@ -42,13 +42,15 @@ private:
     const Uint8* keyState;
     int mouseX;
 
+    // Player data
+    std::unique_ptr<Player> player;
+
     // NPC interaction state
     bool inConversation;
     bool eKeyWasPressed;
     NPC* currentTalkingNPC;
 
     // View components
-    std::unique_ptr<MiniMap> miniMap;
     std::unique_ptr<WorldView> worldView;
     std::unique_ptr<PlayerStatsView> playerStatsView;
 
@@ -153,9 +155,15 @@ public:
 
         playerStatsView->setPlayerName("Square");
 
+        // ================= PLAYER CREATION =================
+        player = std::make_unique<Player>("Square");
+        
+        // Add some starter potions for testing
+        player->addHealingPotion(3);
+        player->addVisionPotion(2);
+
         // ================= VIEWS =================
-        miniMap   = std::make_unique<MiniMap>(MINIMAP_SIZE, SCREEN_WIDTH);
-        worldView = std::make_unique<WorldView>(SCREEN_WIDTH, SCREEN_HEIGHT);
+        worldView = std::make_unique<WorldView>(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
         // ================= MAP LOAD =================
         std::ifstream testFile("map/town.map");
@@ -267,9 +275,9 @@ public:
                 currentTalkingNPC = targetNPC;
 
                 // ──────────────────────────────────────────────────────────────
-                // Try to load the specific NPC portrait first
+                // Try to load the specific NPC portrait first 
                 // ──────────────────────────────────────────────────────────────
-                std::string specificPath = targetNPC->getAvatarPath();
+                std::string specificPath = targetNPC->getAvatarPath(); // SQLLite Name:
                 bool loaded = playerStatsView->loadNPCPortrait(renderer, specificPath);
 
                 // If specific file failed, try a default directory fallback
@@ -386,8 +394,7 @@ public:
         SDL_RenderClear(renderer);
 
         worldView->render(renderer, map, playerPos, viewAngle);
-        miniMap->render(renderer, map, playerPos, viewAngle);
-        playerStatsView->render(renderer);
+        playerStatsView->render(renderer, player.get());
 
         SDL_RenderPresent(renderer);
     }

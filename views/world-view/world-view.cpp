@@ -1,12 +1,13 @@
 #include "world-view.hh"
+#include "../../npc/Shapes/Rectangle.hh"
+#include "../../npc/Shapes/Triangle.hh"
+#include "../../npc/Shapes/Circle.hh"
+#include "../../npc/Shapes/Line.hh"
 #include <cmath>
-#include <algorithm>
 #include <iostream>
 
-WorldView::WorldView(int w, int h)
-    : screenWidth(w), screenHeight(h), currentPrompt(""), showPrompt(false) {
-
-    // Load a font for the floating prompt — try the same paths as before
+WorldView::WorldView(int posX, int posY, int width, int height) : posX(posX), posY(posY), width(width), height(height) {
+    // Load a font for the floating prompt
     std::vector<std::string> fontPaths = {
         "assets/fonts/Minecraft/Minecraft-Regular.otf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -22,7 +23,7 @@ WorldView::WorldView(int w, int h)
     }
 
     if (!promptFont) {
-        std::cerr << "WorldView: Warning — could not load any font for floating prompt\n";
+        std::cerr << "WorldView: Warning — could not load any font for prompt\n";
     }
 }
 
@@ -55,83 +56,107 @@ const NPC* WorldView::getNPCInCrosshair(const Map& map, const Vec2& playerPos, f
 }
 
 void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playerPos, float viewAngle) {
-    int viewHeight = 60;
-    int viewStartY = (screenHeight / 2) - viewHeight / 2;  // centered vertically
-    int centerY = viewStartY + viewHeight / 2;
-
-    Vec2 viewDir(std::cos(viewAngle), std::sin(viewAngle));
-
-    const float FOV = M_PI / 2;
-    const float maxRayDistance = 50.0f;
-    const float rayStep = 0.2f;
-
-    for (int i = 0; i < screenWidth; i++) {
-        float screenPercent = (float)i / screenWidth;
-        float angle = viewAngle + (screenPercent - 0.5f) * FOV;
-        Vec2 rayDir(std::cos(angle), std::sin(angle));
-
-        bool hitWall = false;
-        bool hitNPC = false;
-        float minDist = maxRayDistance;
-
-        for (float dist = 0.1f; dist < maxRayDistance; dist += rayStep) {
-            Vec2 checkPos = playerPos + rayDir * dist;
-
-            for (const auto& shape : map.shapes) {
-                float minY, maxY;
-                if (shape->intersectsVerticalLine(checkPos.x, minY, maxY)) {
-                    if (checkPos.y >= minY && checkPos.y <= maxY) {
-                        minDist = dist;
-                        hitWall = true;
-                        hitNPC = false;
-                        goto done_checking;
-                    }
-                }
+    // Draw minimap background
+    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_Rect minimapRect = {posX, posY, width, height};
+    SDL_RenderFillRect(renderer, &minimapRect);
+    
+    // Enable clipping to minimap area
+    SDL_RenderSetClipRect(renderer, &minimapRect);
+    
+    // Calculate scale and offset for minimap
+    float scale = 4.0f;  // Larger scale for full-screen view
+    float offsetX = posX + width / 2 - playerPos.x * scale;
+    float offsetY = posY + height / 2 - playerPos.y * scale;
+    
+    // Draw shapes on minimap
+    for (const auto& shape : map.shapes) {
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+        
+        if (auto rect = dynamic_cast<Rectangle*>(shape.get())) {
+            SDL_Rect r = {
+                (int)(offsetX + rect->position.x * scale),
+                (int)(offsetY + rect->position.y * scale),
+                (int)(rect->width * scale),
+                (int)(rect->height * scale)
+            };
+            SDL_RenderFillRect(renderer, &r);
+        } else if (auto circ = dynamic_cast<Circle*>(shape.get())) {
+            int cx = (int)(offsetX + circ->position.x * scale);
+            int cy = (int)(offsetY + circ->position.y * scale);
+            int r = (int)(circ->radius * scale);
+            // Draw circle as octagon approximation
+            for (int i = 0; i < 8; i++) {
+                float angle1 = i * M_PI / 4;
+                float angle2 = (i + 1) * M_PI / 4;
+                SDL_RenderDrawLine(renderer,
+                    cx + r * std::cos(angle1), cy + r * std::sin(angle1),
+                    cx + r * std::cos(angle2), cy + r * std::sin(angle2));
             }
-
-            for (const auto& npc : map.npcs) {
-                float minY, maxY;
-                if (npc.shape->intersectsVerticalLine(checkPos.x, minY, maxY)) {
-                    if (checkPos.y >= minY && checkPos.y <= maxY) {
-                        minDist = dist;
-                        hitWall = false;
-                        hitNPC = true;
-                        goto done_checking;
-                    }
-                }
-            }
-
-            for (const auto& line : map.lines) {
-                float dist_to_line = line->getClosestDistanceToPoint(checkPos);
-                const float lineThickness = 0.5f;  // Raycast hits if within this distance
-                if (dist_to_line < lineThickness) {
-                    minDist = dist;
-                    hitWall = true;
-                    hitNPC = false;
-                    goto done_checking;
-                }
-            }
-        }
-    done_checking:
-
-        if (hitWall || hitNPC) {
-            float brightness = 1.0f - (minDist / 30.0f);
-            brightness = std::max(0.2f, std::min(1.0f, brightness));
-
-            if (hitWall) {
-                SDL_SetRenderDrawColor(renderer, (Uint8)(255 * brightness), (Uint8)(255 * brightness), (Uint8)(255 * brightness), 255);
-            } else {
-                SDL_SetRenderDrawColor(renderer, (Uint8)(255 * brightness), (Uint8)(100 * brightness), (Uint8)(100 * brightness), 255);
-            }
-            SDL_RenderDrawPoint(renderer, i, centerY);
-        } else {
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderDrawPoint(renderer, i, centerY);
+        } else if (auto tri = dynamic_cast<Triangle*>(shape.get())) {
+            SDL_Point points[4] = {
+                {(int)(offsetX + tri->p1.x * scale), (int)(offsetY + tri->p1.y * scale)},
+                {(int)(offsetX + tri->p2.x * scale), (int)(offsetY + tri->p2.y * scale)},
+                {(int)(offsetX + tri->p3.x * scale), (int)(offsetY + tri->p3.y * scale)},
+                {(int)(offsetX + tri->p1.x * scale), (int)(offsetY + tri->p1.y * scale)}
+            };
+            SDL_RenderDrawLines(renderer, points, 4);
         }
     }
-
-    // Orange crosshair
-    int centerX = screenWidth / 2;
+    
+    // Draw lines on minimap
+    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+    for (const auto& line : map.lines) {
+        const auto& points = line->getPoints();
+        for (size_t i = 0; i + 1 < points.size(); ++i) {
+            int x1 = (int)(offsetX + points[i].x * scale);
+            int y1 = (int)(offsetY + points[i].y * scale);
+            int x2 = (int)(offsetX + points[i + 1].x * scale);
+            int y2 = (int)(offsetY + points[i + 1].y * scale);
+            SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+        }
+    }
+    
+    // Draw NPCs on minimap
+    SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+    for (const auto& npc : map.npcs) {
+        if (auto circ = dynamic_cast<Circle*>(npc.shape.get())) {
+            int cx = (int)(offsetX + circ->position.x * scale);
+            int cy = (int)(offsetY + circ->position.y * scale);
+            int r = (int)(circ->radius * scale);
+            SDL_Rect npcRect = {cx - r, cy - r, r * 2, r * 2};
+            SDL_RenderFillRect(renderer, &npcRect);
+        }
+    }
+    
+    // Draw player on minimap
+    SDL_SetRenderDrawColor(renderer, 100, 255, 100, 255);
+    int px = posX + width / 2;
+    int py = posY + height / 2;
+    SDL_Rect playerRect = {px - 3, py - 3, 6, 6};
+    SDL_RenderFillRect(renderer, &playerRect);
+    
+    // Draw view direction indicator
+    int dirLength = 15;
+    SDL_RenderDrawLine(renderer, px, py,
+        px + (int)(dirLength * std::cos(viewAngle)),
+        py + (int)(dirLength * std::sin(viewAngle)));
+    
+    // Draw FOV cone (180 degrees)
+    float fov = M_PI / 2; // 180 degrees
+    SDL_RenderDrawLine(renderer, px, py,
+        px + (int)(dirLength * std::cos(viewAngle - fov/2)),
+        py + (int)(dirLength * std::sin(viewAngle - fov/2)));
+    SDL_RenderDrawLine(renderer, px, py,
+        px + (int)(dirLength * std::cos(viewAngle + fov/2)),
+        py + (int)(dirLength * std::sin(viewAngle + fov/2)));
+    
+    // Disable clipping
+    SDL_RenderSetClipRect(renderer, nullptr);
+    
+    // Draw orange crosshair on main view
+    int centerX = posX + width / 2;
+    int centerY = posY + height / 2;
     int crosshairSize = 8;
     SDL_SetRenderDrawColor(renderer, 255, 165, 0, 200);
     SDL_RenderDrawLine(renderer, centerX - crosshairSize, centerY, centerX + crosshairSize, centerY);
@@ -150,11 +175,6 @@ void WorldView::render(SDL_Renderer* renderer, const Map& map, const Vec2& playe
             int textH = textSurface->h;
 
             int promptY = centerY + 35;  // ~35px below crosshair
-
-            // Background rectangle
-            SDL_Rect bgRect = {centerX - textW/2 - 10, promptY - 5, textW + 20, textH + 10};
-            SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
-            SDL_RenderFillRect(renderer, &bgRect);
 
             // Text
             SDL_Rect dstRect = {centerX - textW/2, promptY, textW, textH};
